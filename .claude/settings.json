@@ -1,8 +1,11 @@
 {
-    "permissions": {
-      "deny": [
-        "EnterWorktree",
-        "Bash(git worktree *)"
-      ]
-    }
+  "permissions": {
+    "deny": [
+      "EnterWorktree",
+      "Bash(git worktree *)"
+    ]
+  },
+  "worktree": {
+    "bgIsolation": "none"
   }
+}
