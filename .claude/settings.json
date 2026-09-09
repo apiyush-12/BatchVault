@@ -1,0 +1,8 @@
+{
+    "permissions": {
+      "deny": [
+        "EnterWorktree",
+        "Bash(git worktree *)"
+      ]
+    }
+  }
