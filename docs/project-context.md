@@ -58,8 +58,9 @@ This is a direction, not a final architectural commitment, and is not permission
 - Not a generic social network.
 - Not a general-purpose messaging app (not a WhatsApp/Instagram/TikTok replacement).
 - Not a generic cloud file/drive manager.
-- Not built for public, open, or discoverable content — batches are private and invite-only.
+- Not built for public, open, or discoverable content — batches are private and invite-only by default, and the MVP is not designed around public discovery or public social networking.
 - Not optimized for daily social engagement or virality; optimized for long-term meaning and preservation.
+- Clarification: the architecture should not permanently preclude a future, explicit opt-in public showcase feature where a batch can intentionally publish selected content. Any such feature must never expose private batch content accidentally.
 
 ## 12. Long-Term Direction
 - Deep support for future-unlock time capsules and "On This Day" style nostalgic resurfacing.
