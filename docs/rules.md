@@ -40,9 +40,9 @@ Prepared per: `/prompts/06_RULES.md`
 - **The service-role client lives in exactly one server-only module.** Never imported into a Client Component, never reachable from browser-bundle code, and its key never carries a `NEXT_PUBLIC_` prefix (architecture §15, security.md §12).
 - **RLS is enabled and forced on every table from the migration that creates it.** No table ships "for now, policies later" (security.md §5.1).
 - **Direct client-side table reads are allowed only where the query carries no business logic and is inherently RLS-safe** (architecture §6). Anything with a rule attached goes through a Server Component or Server Action.
-- **High-risk writes are RPC-only** (security.md §5.2): batch creation, invite issuance/redemption, membership approval/rejection/removal, role changes, ownership transfer, media preallocation/finalize, report creation, audit-log writes, and batch deletion/restoration never go through direct client `INSERT`/`UPDATE`/`DELETE`. They are called through the specific SQL functions `database.md` and `security.md` describe for each operation.
-- **A privileged (`SECURITY DEFINER`-style) database function is security-critical code.** It derives the caller from `auth.uid()`, never accepts caller-asserted identity or role, uses fully schema-qualified names, pins a safe `search_path`, contains no dynamic SQL, and gets adversarial tests before anything depends on it (security.md §5.2.2, §5.3).
-- **Storage access follows the same posture as table access.** All buckets are private; the client never chooses or influences an object path (architecture §7, security.md §6). Only the `media` module talks to Storage (architecture §17).
+- **High-risk writes are RPC-only** (security.md §5.2): batch creation + initial owner membership, invite creation, invite redemption / membership creation, membership approval / rejection / removal, role changes, ownership transfer, media preallocation, media finalize, report creation, audit-log insertion, and batch deletion/restoration never go through direct client `INSERT`/`UPDATE`/`DELETE`. `database.md` and `security.md` specify the required behavior and invariants for each of these operations — **not** final SQL function names or signatures. The implementation's job is to create narrow RPCs that enforce exactly the documented invariants; naming and signatures are an implementation decision made when that RPC is written.
+- **A privileged (`SECURITY DEFINER`-style) database function is itself a trusted security boundary, not a convenience layered on top of RLS.** Where its execution role intentionally holds privileges the caller lacks, RLS is not what authorizes the write inside it — the function's own explicit authorization logic is (security.md §5.2.2). Accordingly it derives the caller from `auth.uid()`, never accepts caller-asserted identity or role, uses fully schema-qualified names, pins a safe `search_path`, contains no dynamic SQL, and gets adversarial tests before anything depends on it (security.md §5.2.2, §5.3).
+- **Storage RLS is the authorization boundary for media**, mirroring how table RLS is the boundary for rows — not the application, and not a Server Action's own checks (security.md §7). All buckets are private; the client never chooses or influences an object path (architecture §7, security.md §6). Only the `media` module talks to Storage (architecture §17).
 
 ### 1.4 Migration conventions
 
@@ -63,6 +63,7 @@ Prepared per: `/prompts/06_RULES.md`
 
 - **shadcn/ui components are vendored in-repo** under `components/ui/` (architecture §16) and, once copied, are treated as our code — reviewed and edited in place, not silently bumped by a package update (security.md §30).
 - **Tailwind CSS is the styling mechanism.** No competing styling system (CSS-in-JS, a second utility framework) is introduced without updating `architecture.md` first.
+- **Lucide React is the icon library.** Already locked, not a per-feature choice — a second icon library is not introduced alongside it.
 - **Shared Framer Motion wrappers live in `components/motion/`** (architecture §16); all motion respects `prefers-reduced-motion` (architecture §2, PRD §19) — a component that animates without checking reduced-motion is not finished.
 - **Mobile-first.** Build and verify the small-screen layout first, then enhance up (project-context §9.4, PRD §10.3).
 - Domain-specific UI lives in `features/<domain>/components/`, not in `components/` — `components/` holds domain-agnostic, reusable UI only (architecture §16).
@@ -71,8 +72,9 @@ Prepared per: `/prompts/06_RULES.md`
 
 ### 1.6 Validation conventions
 
-- **Every Server Action and Route Handler input is parsed and validated against a schema at the boundary** before anything else happens (architecture §3.2, security.md §13). No handler trusts a client-shaped object.
-- **One schema-validation approach, chosen once and used everywhere** — for example, Zod. The specific library is a Phase 0 decision, made a single time and not revisited or duplicated per feature.
+- **Zod is the validation/schema library for this project.** This is already locked, not a future Phase 0 choice. Every Server Action and Route Handler input is parsed and validated with Zod at the boundary before anything else happens (architecture §3.2, security.md §13). No handler trusts a client-shaped object, and no second schema-validation library is introduced alongside it.
+- **React Hook Form is the standard client form library.** Forms use React Hook Form, with a Zod resolver where appropriate, for client-side UX — inline errors, submit-disabled states, and the like.
+- **Client form validation never replaces server validation.** React Hook Form + Zod on the client is a UX convenience only. Every server boundary independently re-validates the same input with Zod regardless of what the client already checked — a value that passed client-side validation is not trusted any differently than one that did not.
 - **Allowlist, never denylist.** Unknown fields are rejected outright, not stripped and silently ignored (security.md §13) — silently dropping a field hides both bugs and probing.
 - **Validation limits mirror the database `CHECK` constraints** (string lengths, ranges) so a bad request fails early with a clear message instead of surfacing as a raw constraint violation later (security.md §13).
 - **UUIDs are validated as UUIDs** before they reach a query.
@@ -85,15 +87,18 @@ Prepared per: `/prompts/06_RULES.md`
 
 The approved stack (project-context §10, and `architecture.md` throughout). Prefer the simplest option already on this list before reaching for something new:
 
+- **pnpm** as the only package manager for this repository — installs, scripts, and the committed lockfile (`pnpm-lock.yaml`) all go through pnpm. `npm`, `yarn`, and `bun` are not used unless the project documentation is intentionally changed first.
+- **Git, hosted on GitHub**, for version control.
 - **Next.js (App Router)**, React Server Components as the default rendering mode.
 - **TypeScript in strict mode**, everywhere, including config and scripts.
-- **Tailwind CSS** for styling; **shadcn/ui** (vendored) for base components.
+- **Tailwind CSS** for styling; **shadcn/ui** (vendored) for base components; **Lucide React** for icons.
 - **Framer Motion** for animation and transitions, always reduced-motion-aware.
+- **Zod** for schema/validation at every input boundary, and **React Hook Form** (with a Zod resolver) as the standard client form library (§1.6) — both already locked, not open choices.
 - **Supabase Auth**, using the supported Supabase SSR cookie/session strategy (architecture §4) — not a hand-rolled session mechanism.
 - **Supabase Postgres** as the single database, via the user-scoped or service-role client as appropriate (architecture §6).
 - **Supabase Storage**, private buckets only, accessed through the `media` module (architecture §7, §17).
 - **Vercel** for hosting, **Vercel Cron** for the small set of scheduled sweeps (architecture §13).
-- **A single schema-validation library** at every input boundary (§1.6).
+- **Vitest** for the unit/integration test layer, and **Playwright** for browser/end-to-end tests (detailed strategy in `docs/testing.md`, Prompt 09).
 - **Sentry (or an already-agreed equivalent)** for error reporting, server and client (architecture §14, security.md §21).
 - **A single structured (JSON) server-side logger** carrying request/user/batch correlation ids (architecture §14).
 - **Keyset/cursor pagination** — never offset pagination — for incremental list views such as the batch gallery (architecture §19, supported by the index in `database.md` §10 #2).
@@ -105,7 +110,9 @@ Everything on this list was already chosen in an earlier document. Adding to it 
 
 ## 3. What to Avoid
 
-- **Unnecessary dependencies.** Every server-side package runs in the same process as the service-role key (security.md §12, §30); a new dependency is a reviewed decision weighed against what it costs, not a convenience. Prefer the standard library, Next.js, or something already in `package.json`.
+- **Unnecessary dependencies.** Every server-side package runs in the same process as the service-role key (security.md §12, §30); a new dependency is a reviewed decision weighed against what it costs, not a convenience. Prefer the standard library, Next.js, or something already in `package.json`. Dependency security scanning runs via **`pnpm audit`** (or the CI equivalent) against production dependencies — not `npm audit`, since pnpm is the only package manager here (§2).
+- **A package manager other than pnpm.** `npm`, `yarn`, and `bun` commands, lockfiles, or install scripts are not introduced unless the project documentation is intentionally changed first (§2).
+- **A second icon library alongside Lucide React, a second form library alongside React Hook Form, or a second schema-validation library alongside Zod.** Each of these is already a locked, single choice (§1.6, §2) — not a per-feature decision.
 - **`any` without a strong, written reason.** Where `any` is genuinely necessary (an untyped third-party shape, a deliberate escape hatch), it is narrowly scoped, commented with *why*, and never used just to avoid understanding a type.
 - **Duplicated business logic.** A rule expressed once — in a SQL helper function, or in a domain's `permissions.ts` / `queries.ts` — is not re-implemented a second time "just for this screen." Two copies of one rule are two chances for them to disagree (the same argument `database.md` §1.3 makes about schema applies to code).
 - **Secrets in client code.** No API key, credential, or token is ever inlined into a Client Component, a `NEXT_PUBLIC_*` variable (unless genuinely public by design, e.g. the Supabase anon key), or committed to the repository (architecture §15; Secure Node.js Development rule 4).
@@ -125,7 +132,7 @@ Everything on this list was already chosen in an earlier document. Adding to it 
 
 ## 4. Code Organization
 
-- **Feature boundaries follow `architecture.md` §16 exactly.** Each domain — `authentication`, `profiles`, `batches`, `memberships`, `invitations`, `memories`, `media`, `comments`, `reactions`, `notifications`, `moderation`, and the reserved post-MVP boundaries (`albums`, `time-capsules`, `yearbook`) — owns its own `actions.ts`, `queries.ts`, `schema.ts`, `types.ts`, `permissions.ts`, and `components/`. A new feature gets this same shape; it is not invented ad hoc.
+- **Feature boundaries follow `architecture.md` §16 exactly.** The active MVP domains are `authentication`, `profiles`, `batches`, `memberships`, `invitations`, `memories`, `media`, `comments`, `reactions`, and `moderation` — each owning its own `actions.ts`, `queries.ts`, `schema.ts`, `types.ts`, `permissions.ts`, and `components/`. **`albums`, `notifications`, `time-capsules`, and `yearbook` are reserved directory boundaries only** (architecture §16, §12, §22; `database.md`'s post-MVP table list) — notifications is postponed from MVP exactly like the other three, per architecture §12 ("a module boundary, not built") and §22, and is not implemented, alone or otherwise, unless `phases.md` later explicitly schedules it. A new feature gets this same shape; it is not invented ad hoc.
 - **A module owns its data.** Another module reads a domain's data only through that domain's exported query functions — never by writing a fresh query against that domain's tables from outside it (architecture §17).
 - **Reusable, domain-agnostic UI lives in `components/`** (`components/ui` for shadcn primitives, `components/motion` for shared animation wrappers). Anything meaningful to only one feature lives in that feature's `components/` instead (architecture §16).
 - **Data access is confined to each feature's `queries.ts` / `actions.ts`.** UI components do not compose queries themselves (architecture §6: "frontend components must not own complex database logic"). A page or component calls a feature function; it does not construct a Supabase query inline.
@@ -182,8 +189,9 @@ Every future AI coding session working on this repository must:
 
 - **Accessibility.** Every core flow named in PRD §19 (signup/login, onboarding, batch creation, join, upload, gallery browsing, memory detail, comments, reactions) is operable by keyboard and screen reader. Interactive elements carry accessible names/labels. Color contrast and type stay legible at shipped sizes. Motion respects `prefers-reduced-motion` (§1.5).
 - **Responsive design.** Mobile-first per project-context §9.4 and PRD §10.3: build and test the small-screen layout first, then verify the same flow at larger breakpoints before calling a UI task done.
-- **Tests.** The detailed strategy belongs to `docs/testing.md` (created in a later planning step, Prompt 09) — but two rules hold regardless of that document's specifics: (1) the adversarial RLS/Storage tests `security.md` §5.6 requires (non-member, pending requester, rejected requester, removed member, cross-batch, and the column-level forgery attempts in §5.4.1/§5.6) are required for any table or policy that ships, not optional polish; (2) a test is not "passing" unless it was actually executed — see §6 rule 6.
+- **Tests.** The tooling is already locked: **Vitest** is the project's unit/integration test layer, and **Playwright** is the browser/end-to-end test layer. The detailed strategy (coverage expectations, CI wiring) belongs to `docs/testing.md` (created in a later planning step, Prompt 09), but two rules hold regardless of that document's specifics: (1) the adversarial RLS/Storage tests `security.md` §5.6 requires (non-member, pending requester, rejected requester, removed member, cross-batch, and the column-level forgery attempts in §5.4.1/§5.6) are required for any table or policy that ships, not optional polish; (2) a test is not "passing" unless it was actually executed — see §6 rule 6.
 - **Linting.** The project's lint configuration (ESLint, via Next.js's recommended setup) runs clean before work is considered done. A warning is fixed or explicitly justified in the change description — never silently ignored.
+- **Dependency scanning.** `pnpm audit` (or its CI equivalent) runs against production dependencies and fails the build on high-severity advisories — the pnpm-consistent form of the gate `security.md` §30 describes. `npm audit` does not apply; pnpm is the only package manager (§2).
 - **Type checks.** The TypeScript compiler / Next.js build's type-checking step passes with zero errors under the strict settings in §1.1. Type errors are not suppressed with `@ts-ignore` / `@ts-expect-error` except in a narrowly scoped, commented, genuinely unavoidable case.
 - **Production build.** `next build` succeeds before a phase is considered complete. A change that only works under `next dev` is not finished.
 - **Documentation.** A change that touches a decision recorded in one of the five source documents updates that document in the same unit of work (CLAUDE.md rules 5, 9). A change that completes meaningful work updates `docs/memory.md` once it exists (§6 above). A durable new convention this document should have covered is proposed as an update to `docs/rules.md` itself, not left undocumented.
@@ -192,10 +200,10 @@ Every future AI coding session working on this repository must:
 
 ## 8. The 15 Most Important Rules
 
-1. **RLS is the authorization boundary and is never disabled, weakened, or bypassed** — for any reason, at any time, including "to fix an error" (security.md §31; CLAUDE.md rule 6).
+1. **The database is the authorization boundary, in three forms, and none of them may be weakened or bypassed:** RLS for direct table access, Storage RLS for media, and — for the RPC-only writes in rule 4 — the RPC's own explicit database-side authorization logic, which is itself a trusted boundary precisely because its execution role intentionally holds privileges the caller lacks (security.md §3, §5.2.2, §7). RLS itself stays enabled and forced everywhere, always — never disabled or weakened, including "to fix an error" (security.md §5.1, §31; CLAUDE.md rule 6).
 2. **The service-role key never appears in client-reachable code**, never carries a `NEXT_PUBLIC_` prefix, and lives in exactly one server-only, narrowly-audited module (security.md §12).
 3. **Never trust the client for identity, role, batch ownership, storage paths, or system timestamps** — the server re-derives all of it from the verified session (security.md §13; architecture §18.4–5).
-4. **High-risk writes are RPC-only, never direct client DML**: batch creation, invites, membership decisions, role changes, ownership transfer, media finalize, reports, audit logs, batch deletion (security.md §5.2).
+4. **High-risk writes are RPC-only, never direct client DML**: batch creation + initial owner, invite creation, invite redemption / membership creation, membership approval/rejection/removal, role changes, ownership transfer, media preallocation, media finalize, report creation, audit-log insertion, batch deletion/restoration. `database.md`/`security.md` specify the invariants each must enforce, not final function names or signatures (security.md §5.2).
 5. **Every Server Action / Route Handler follows authenticate → validate → authorize → execute → revalidate, in that order, with no step skipped** (architecture §18.3).
 6. **Implement only the requested phase; stop exactly when told to stop** (CLAUDE.md rules 1–4, 10).
 7. **Never claim a test, lint run, type check, or build succeeded unless it was actually run and observed in this session** (CLAUDE.md rule 7).
@@ -204,7 +212,7 @@ Every future AI coding session working on this repository must:
 10. **A module owns its data; nothing outside a domain writes its own query against that domain's tables** (architecture §17).
 11. **`any` is never used without a documented reason; strict TypeScript stays strict** (§1.1, §3).
 12. **Keep changes scoped to the task — no unrelated refactors, renames, or "while I'm here" features** (CLAUDE.md rule 8).
-13. **Client-side validation and pre-checks (file type, size, duration) are UX only — the server is the sole authoritative check** (architecture §8, §10).
+13. **Client-side pre-checks (file type, size, duration) are UX only, never proof.** At finalize, the one authoritative fact is the actual stored byte size; the Storage-reported Content-Type is metadata enforcement, not proof of what the bytes contain; intrinsic type, codec, and duration are not authoritatively inspected in MVP, and trusted media inspection (`ffprobe`-class) remains deferred (architecture §8, §10, ADR-08a; security.md §14).
 14. **User-facing errors are generic and never reveal whether a private resource exists**; diagnostic detail goes to server logs only, and logs never include content, tokens, or media (security.md §3, §21).
 15. **Destructive and irreversible actions (batch deletion, ownership transfer) require explicit, high-friction confirmation** (security.md §11, §24).
 
