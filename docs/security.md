@@ -130,7 +130,8 @@ Roles, highest capability first (*presentation order; the enum is declared ascen
 | View member list | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Upload memories / media | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Comment, react | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| Edit / delete **own** memory or comment | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Edit **own** memory metadata / **own** comment body | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Self-delete** own memory or own comment | ⚠️ *conditional — see note* | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ |
 | File a report | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | View the report queue | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Remove **others'** content | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -143,6 +144,12 @@ Roles, highest capability first (*presentation order; the enum is declared ascen
 | Transfer ownership | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Delete the batch | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | View the audit log | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+**Note on the edit/self-delete rows (reconciled with §5.4.3).** Author *editing* is in scope now: a memory's `caption` / `event_name` / `occurred_on`, and a comment's `body`. Author *self-delete* is **not unconditional**, and the two content types are **not** assumed to follow the same rule:
+
+- **Own memory** — exists only if PRD unresolved decision #7 permits author self-delete (including any time limit it sets), and then only through the controlled write path in §5.4.3, never a direct `deleted_at` write.
+- **Own comment** — **not in MVP phase scope** (`phases.md` Phase 6 ships comment create and author body edit only).
+- Removal of *any* content by mod+ is the separate, audited capability in the "Remove **others'** content" row, and it covers a moderator's own content too.
 
 **Ceiling rules that the matrix cannot show:**
 
@@ -284,8 +291,8 @@ Notation: **member** = active membership at any role; **mod+** = moderator, admi
 | `batch_members` | Members see the roster of their own batches. A pending requester sees **only their own row**, so they can tell their request is pending without learning who else is in the batch | **RPC only.** Rows are created by invite redemption or by the batch-creation function. **A caller can never insert a membership by supplying a batch id** | **RPC only** — approval/rejection/removal and role changes, each enforcing the §4 and §11 ceilings | None — status transitions only (database.md §12) |
 | `batch_invites` | admin+ of that batch, **excluding `token_hash`** (column privilege, §9) | **RPC only** — the server generates and hashes the token; a client-supplied hash would be a forged credential | **RPC only** — admin+ revoke; `use_count` moves only inside the redemption transaction | None while the batch lives (database.md §3.4) |
 | `memories` | member, `deleted_at IS NULL`, *(post-MVP: and not capsule-locked, §5.5)* | **RPC only** — created by media finalize, which owns the transaction | Author edits own caption/metadata (direct DML acceptable, policy-checked); removal by mod+ is RPC (audited); author self-delete is **gated on PRD #7** and, if permitted, uses the controlled path in §5.4.3 — never a direct `deleted_at` write | None — soft delete only |
-| `media_assets` | member, and only rows whose memory is visible to them; `pending`/`rejected` rows readable only by their uploader | **RPC only** — preallocation composes the storage path server-side | **RPC only** — finalize writes authoritative object metadata; mod+ removal | None — soft delete, then privileged reap |
-| `comments` | member, `deleted_at IS NULL`, **and the parent memory is visible** (§5.4.2) | Direct DML acceptable: member, with a write-side check that `batch_id`/`memory_id` resolve to a batch they are actively in **and that the parent memory is currently visible and open to interaction** | Author edits own body (direct); mod+ removal is RPC (audited) | None — soft delete only |
+| `media_assets` | **`ready`** — member, and only rows whose parent memory is visible to them, under the full resource-visibility predicate in §7.1 (active membership; batch not soft-deleted; `media_assets.deleted_at IS NULL`; parent memory exists, is not soft-deleted, and is visible). **`pending`** — its **uploader only**, and only where the upload/finalize flow genuinely requires that read. **`rejected`** — **never generally readable** | **RPC only** — preallocation composes the storage path server-side | **RPC only** — finalize writes authoritative object metadata; mod+ removal | None — soft delete, then privileged reap |
+| `comments` | member, `deleted_at IS NULL`, **and the parent memory is visible** (§5.4.2) | Direct DML acceptable: member, with a write-side check that `batch_id`/`memory_id` resolve to a batch they are actively in **and that the parent memory is currently visible and open to interaction** | Author edits own `body` (direct DML, policy-checked); **author self-delete is not in MVP phase scope** (`phases.md` Phase 6; §5.4.3); mod+ removal is RPC (audited) | None — soft delete only |
 | `reactions` | member, **and the parent memory is visible** (§5.4.2) | Direct DML acceptable: member, **for themselves only** — `profile_id` is bound to `auth.uid()` by the database, not taken from the payload (§5.4.1) — **and the parent memory must be visible and open to interaction** | Own reaction only, `kind` only | Own reaction only |
 | `reports` | **mod+ only.** Reporters do *not* get to read the queue, and a reported member must never see the report or learn who filed it | **RPC only** — the immutable `target_kind`/`target_id` snapshot is derived server-side, never asserted by the caller | **RPC only** — mod+ resolution fields; snapshot columns are not updatable by anyone | None |
 | `audit_logs` | admin+ of that batch. Not exposed for direct client query | **RPC only** — written by the action being recorded | **Nobody** — append-only by privilege | **Nobody** |
@@ -1031,7 +1038,7 @@ Applied centrally (middleware / platform config) so a new route is protected by 
 
 - **Lockfile committed**; reproducible installs in CI.
 - **Automated dependency updates** (Dependabot/Renovate) with security advisories triaged on a defined cadence — critical promptly, others batched.
-- **`npm audit` (or equivalent) runs in CI** and fails the build on high-severity advisories in production dependencies.
+- **`pnpm audit` (or its CI equivalent) runs in CI** and fails the build on high-severity advisories in production dependencies. pnpm is the only package manager for this repository (`rules.md` §2), so the gate is expressed in pnpm terms.
 - **New dependencies are a reviewed decision**, weighed on maintenance health and transitive footprint, not convenience.
 - **shadcn/ui components are vendored into the repo** — once copied they are our code, reviewed as our code, and not silently updated.
 - **Supabase client libraries are pinned and updated deliberately**, since they sit directly on the auth and data path.
@@ -1097,4 +1104,4 @@ If the abuser is the batch owner, nobody inside the batch outranks them and no o
 
 ---
 
-STOP — Prompt 05 complete. `docs/rules.md` is **not** started, no policies, SQL, migrations or application code were written. Awaiting the next instruction.
+Prompt 05 complete. This document defines intended security behaviour; it created no policies, SQL, migrations, or application code. Current project status and next allowed task are tracked in `docs/memory.md`.

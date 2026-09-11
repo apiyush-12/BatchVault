@@ -79,7 +79,13 @@ Key property: the browser never holds a privileged credential. It holds a user s
 
 ## 3. Server-Side Responsibilities
 
-The Next.js server layer is the only place where business rules live. Its responsibilities:
+The Next.js server layer owns **application orchestration and business-flow logic** — it is not, however, the only place correctness is enforced. Three layers own distinct things, and collapsing them into "the server owns all business rules" is the mistake this section previously made:
+
+- **Next.js server layer** — orchestration and business flow: sequencing a request, validating input, deciding what operation to invoke, coordinating media steps, revalidating caches.
+- **Database constraints and SQL functions** — **atomic invariants**: multi-row operations that must commit together, uniqueness and check constraints, referential/same-batch integrity, and anything that must stay true regardless of which caller wrote it (§6; `database.md` §14).
+- **Privileged database functions** — their own **explicit, security-critical authorization checks**, which are the trusted boundary for the writes they perform with rights the caller does not hold (§5 refinement; `security.md` §5.2.2).
+
+The server layer's responsibilities:
 
 1. **Session handling** — read/refresh the Supabase session from cookies on every request (middleware + server client).
 2. **Input validation** — validate and parse every Server Action / Route Handler input with a schema validator at the boundary. Never trust client-shaped objects.
@@ -188,10 +194,13 @@ Supabase Storage for MVP (per project-context §10).
   - a bucket for batch memory media (photos, videos, and their derivatives),
   - a bucket for profile/avatar images,
   - (future) a bucket for explicitly published showcase content, which is the *only* one that could ever become public.
-- **Object paths are batch-scoped and server-generated**, keyed by batch identifier then a server-generated stable identifier for the upload (see §8), so Storage RLS policies can derive authorization from the path the same way table policies derive it from a foreign key.
+- **Object paths are server-generated, and their shape differs by bucket** — not every path is batch-scoped (`security.md` §6):
+  - **Batch media** — `{batch_id}/{media_asset_id}`. Batch-scoped, so Storage RLS can derive the batch from the path the same way table policies derive it from a foreign key (see §8).
+  - **Avatars** — `{profile_id}/{asset_id}`. **Profile-scoped**, with no batch id in the path at all; avatar authorization is therefore decided by profile visibility rules, not by the batch-media predicate (`security.md` §6.1).
+  - Path parsing fails closed: a malformed name, a missing segment, or a segment that is not a UUID denies access rather than falling through to a permissive branch.
 - **The client never chooses, supplies, or influences an object path.** Paths are composed entirely server-side from the authenticated caller's batch context and a server-generated identifier. Original filenames are treated as untrusted display metadata stored in the database, never as path components.
 - **Storage RLS mirrors table RLS.** A user may read an object only if they hold an approved membership in the batch that owns the path; upload is likewise membership-gated.
-- **Reads are served via signed URLs** with a short TTL, minted server-side per request for the current viewer. Signed URLs are never persisted in the database, logged, or shared across users.
+- **Reads are normally served via signed URLs** that the application mints with a short TTL per request for the current viewer. Signed URLs are never persisted in the database, logged, or shared across users. **This is not server-only minting**: creating a signed URL requires the same Storage `SELECT` permission an ordinary read requires, so an authenticated member who already satisfies the Storage RLS policy for an object may call the signed-URL API directly and choose their own expiry. That is the adopted **Option B** model — it is not a privacy bypass (they already had that read access), but the application's TTL and rate limits bound only the URLs the application mints (`security.md` §8, §8.1).
 - **The database is authoritative for metadata**; Storage holds bytes only. An orphaned object is recoverable; an orphaned metadata row is not authoritative content.
 
 ---
@@ -265,7 +274,7 @@ A correction to a tempting but false assumption: **Supabase object metadata does
 | Property | MVP enforcement | Strength |
 |---|---|---|
 | File size | Server-side at finalize, from actual stored object size | **Authoritative** |
-| MIME / content type | Server-side at finalize, against an allowlist | **Authoritative** (as declared/stored type) |
+| MIME / content type | Server-side at finalize, against an allowlist | **Server-observed metadata, enforced against the allowlist** — authoritative as *the type Storage reports for the stored object*, and **not** intrinsic proof of what the bytes contain |
 | Object exists at the issued path | Server-side at finalize | **Authoritative** |
 | Video duration | Client-side pre-check only | **UX validation only — not a guarantee** |
 | Codec / container internals | Client-side pre-check only | **UX validation only — not a guarantee** |
@@ -302,7 +311,7 @@ The PRD does not list notifications as an MVP functional requirement, so the MVP
 - **Invitations are delivered by the user, not by the system.** The primary — and for MVP the only required — invitation mechanism is a **secure invite link/code** generated server-side and handed to the inviter to copy and share through whatever channel their batch already uses: WhatsApp, a QR code, SMS, any messaging app. This matches how a college batch actually coordinates, and it means **the MVP does not depend on a dedicated transactional email provider at all**.
 - **No dedicated invitation email provider is required for MVP.** Sending invitation emails from BatchVault is an optional, future enhancement. If added later, it is delivery of the same invite link through one more channel — it changes nothing about how invitations are issued, authorized, or redeemed, and it lives behind the notifications module.
 - **Supabase Auth may still send email** for authentication flows it owns (magic link, verification, password reset). That is Supabase's built-in email, is part of the auth provider, and is separate from any BatchVault-owned notification delivery.
-- **Invite link security properties** (issuance and redemption remain owned by the `invitations` module): the token is a high-entropy, server-generated, unguessable value; it is scoped to a single batch; it expires (§13 retires expired invitations); it is revocable by Owner/Admin; and **redeeming it grants only what the batch's settings allow** — where the batch requires approval, redemption creates a pending membership, not access (PRD §9.8, §5 "pending memberships are not access"). A shareable link is explicitly *not* a bypass of the privacy model.
+- **Invite link security properties** (issuance and redemption remain owned by the `invitations` module): the token is a high-entropy, server-generated, unguessable value; it is scoped to a single batch; it **supports** expiry — `expires_at` is nullable, so expiry is controllable rather than structurally mandatory, and a finite default remains a **security recommendation pending the relevant product decision** (`database.md` §3.4; `security.md` §9), with §13's sweep retiring links that do carry one; it is revocable by Owner/Admin; and **redeeming it grants only what the batch's settings allow** — where the batch requires approval, redemption creates a pending membership, not access (PRD §9.8, §5 "pending memberships are not access"). A shareable link is explicitly *not* a bypass of the privacy model.
 - **In-app notifications are modeled as a module boundary, not built.** A `notifications` feature module exists in the structure (§16) and owns any future notification records, preferences, and delivery. Other modules emit domain events to it; they never talk to an email provider directly.
 - **No push notifications, no notification feed, no digest emails in MVP.** These are postponed (§22).
 - **No real-time subscriptions in MVP.** Supabase Realtime is a natural future fit for live comments/reactions, but it introduces a second authorization surface (channel-level access) and is not required for a preservation-oriented product. Postponed.
@@ -369,7 +378,10 @@ Feature-oriented, not layer-oriented. Domains own their data access, logic, and 
 │  │  │     ├─ members/
 │  │  │     ├─ moderation/
 │  │  │     └─ settings/
-│  │  └─ invites/[token]/
+│  │  └─ invite/                     # NO token in the path — the raw token
+│  │                                  # travels in the URL fragment and is
+│  │                                  # submitted in the redemption POST body
+│  │                                  # (security.md §9.1)
 │  ├─ api/                           # Route Handlers (webhooks, cron, media routes)
 │  │  ├─ cron/
 │  │  └─ media/
@@ -538,7 +550,7 @@ Not in the MVP architecture, by decision:
 
 ## Architecture Summary
 
-BatchVault MVP is one Next.js (App Router, strict TypeScript) application on Vercel, backed by Supabase for Auth, PostgreSQL, and Storage. Server Components read data through a request-scoped, user-bound Supabase client; Server Actions perform all writes behind a fixed authenticate → validate → authorize → execute → revalidate sequence. Authorization is enforced three times — hidden in the UI, checked in the action, and *guaranteed* by Row Level Security in Postgres — with RLS as the real boundary, so an application bug cannot become a privacy breach. Media is uploaded directly from the browser to private Storage buckets using server-issued, membership-checked upload targets, then finalized server-side; reads use short-lived signed URLs. Code is organized by domain (batches, memberships, invitations, memories, media, comments, reactions, moderation, and reserved post-MVP boundaries), with all query construction confined to each domain's data layer and the service-role credential confined to a few audited server-only call sites. Background work is limited to idempotent Vercel Cron sweeps; there is no queue, no worker service, and no microservices.
+BatchVault MVP is one Next.js (App Router, strict TypeScript) application on Vercel, backed by Supabase for Auth, PostgreSQL, and Storage. Server Components read data through a request-scoped, user-bound Supabase client; Server Actions perform all writes behind a fixed authenticate → validate → authorize → execute → revalidate sequence. Authorization is layered — hidden in the UI, checked in the action, and **guaranteed at the database boundary**, which takes three forms (§5 refinement): **direct table access** is authorized by PostgreSQL RLS plus column-level enforcement; **Storage access** is authorized by Storage RLS; and a **privileged database function** executing with rights the caller lacks is authorized by the function's own explicit authorization logic. An application bug therefore cannot become a privacy breach. Media is uploaded directly from the browser to private Storage buckets using server-issued, membership-checked upload targets, then finalized server-side; reads are normally served through short-lived application-minted signed URLs, with the Option B caveat in §7 that an already-authorized member can also mint their own. Code is organized by domain (batches, memberships, invitations, memories, media, comments, reactions, moderation, and reserved post-MVP boundaries), with all query construction confined to each domain's data layer and the service-role credential confined to a few audited server-only call sites. Background work is limited to idempotent Vercel Cron sweeps; there is no queue, no worker service, and no microservices.
 
 ## Five Highest-Risk Architecture Areas
 
@@ -554,4 +566,4 @@ BatchVault MVP is one Next.js (App Router, strict TypeScript) application on Ver
 
 ---
 
-STOP — Prompt 03 complete. `docs/database.md` and database design are **not** started. Awaiting the next instruction.
+Prompt 03 complete. Current project status and next allowed task are tracked in `docs/memory.md`.

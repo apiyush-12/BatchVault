@@ -77,7 +77,9 @@ Receive invite → sign up or log in → request/accept join → (if required) w
 Log in after a long absence → open batch → browse gallery / memory detail pages chronologically or by event → react to and comment on old memories.
 
 **Journey E — Manage the batch**
-Batch Owner/Admin/Moderator reviews members → approves/removes members → reviews reported content → adjusts batch settings and privacy.
+Owner/Admin/Moderator reviews members → approves or denies join requests → reviews reported content → removes content or members, each within their documented role ceilings (§12–13).
+
+Settings are a separate power from moderation: **only Owner/Admin adjust batch settings, identity, and privacy.** A Moderator handles join requests, reports, and content moderation, and does not change batch settings.
 
 ## 9. Functional Requirements
 
@@ -87,7 +89,7 @@ Batch Owner/Admin/Moderator reviews members → approves/removes members → rev
 4. **Batch identity** — A batch has identifying attributes: institution, course/department, graduation year, section (or equivalent), and a display name.
 5. **Batch privacy** — Each batch has an explicit privacy configuration (e.g., private/invite-only by default; any public exposure must be explicit and scoped to specific content, never the whole batch by default).
 6. **Invite classmates** — Batch Owners/Admins can generate invites (e.g., link or code) to bring classmates in.
-7. **Join batch** — Invited or discovering users can request to join a batch.
+7. **Join batch** — An invited user redeems an invite link and, according to the batch's join policy, either becomes an **active** member or becomes a **pending** request awaiting approval. **Entry is invite-link only:** there is no discovery, search, or directory-based joining in MVP, and no way for a stranger to request access to a batch they were never given a link to (see §"Unresolved" 4, resolved; `security.md` §10).
 8. **Membership approval where needed** — Depending on batch settings, joins may require Owner/Admin/Moderator approval before access is granted.
 9. **Upload photos** — Members can upload photos to the batch archive.
 10. **Upload short videos** — Members can upload short-form videos to the batch archive.
@@ -238,7 +240,7 @@ Excluded from MVP (see Section 15 and Non-Goals):
 4. A Member can upload a photo or short video with a caption and event/date metadata, and it appears in the batch gallery.
 5. Any batch member can open a memory detail page to view media, caption, metadata, comments, and reactions.
 6. Members can comment on and react to memories.
-7. Owner/Admin/Moderator can view and manage members (approve, deny, remove) and manage batch settings.
+7. Owner/Admin/Moderator can view members and manage membership within their documented ceilings (approve, deny, remove — §12–13), **and Owner/Admin — not Moderator — can manage batch settings, identity, and privacy.**
 8. Members can report content, and an authorized role can remove reported content.
 9. A user who is not an approved member of a private batch cannot access that batch's gallery, memory detail pages, member list, comments, or reactions — verified at the backend/database level (e.g., Row Level Security), not only hidden in the UI.
 10. No MVP feature includes direct messaging, a public follower system, a reels feed, dating, a marketplace, cryptocurrency/blockchain, facial recognition, or live streaming.
@@ -271,4 +273,4 @@ Excluded from MVP (see Section 15 and Non-Goals):
 
 ---
 
-STOP — Prompt 02 complete. Awaiting next instruction before proceeding to Prompt 03 or any architecture/implementation work.
+Prompt 02 complete. Current project status and next allowed task are tracked in `docs/memory.md`.

@@ -374,7 +374,7 @@ Split into two sub-phases; the photo pipeline must be correct before video const
 
 **Explicitly NOT in scope.** No authoritative duration/codec verification. No media processing pipeline. No richer transcoding (post-MVP). No moderator removal of others' content (8A).
 
-**User stories.** As a member I can upload a short video and play it back. As an author I can fix a caption or date, and delete my own memory. As an operator, abandoned uploads do not accumulate.
+**User stories.** As a member I can upload a short video and play it back. As an author I can fix a caption or date on my own memory. **If — and only if — PRD #7 permits author self-delete, I can also delete my own memory** through the controlled path in security.md §5.4.3; until that decision is made, this phase promises author *edit* only, and removal stays with mod+. As an operator, abandoned uploads do not accumulate.
 
 **Database changes.** No new tables; the `(created_at) WHERE status <> 'ready'` sweep index and `(deleted_at) WHERE deleted_at IS NOT NULL` reaping index if not already present (database.md §10).
 
@@ -726,4 +726,4 @@ Two honest qualifications. Phase 4A's viewing surface is a deliberately unpolish
 
 ---
 
-STOP — Prompt 08 complete. No application code, migrations, or SQL were created, no packages were installed, no previous documentation file was modified, and nothing was committed. `docs/testing.md` (Prompt 09) is **not** started. Awaiting the next instruction.
+Prompt 08 complete. This document is the execution roadmap; it created no application code, migrations, or SQL. The per-phase **STOP boundaries above remain in force** as implementation controls. Current project status and next allowed task are tracked in `docs/memory.md`.

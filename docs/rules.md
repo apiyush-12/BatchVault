@@ -99,7 +99,7 @@ The approved stack (project-context §10, and `architecture.md` throughout). Pre
 - **Supabase Postgres** as the single database, via the user-scoped or service-role client as appropriate (architecture §6).
 - **Supabase Storage**, private buckets only, accessed through the `media` module (architecture §7, §17).
 - **Vercel** for hosting, **Vercel Cron** for the small set of scheduled sweeps (architecture §13).
-- **Vitest** for the unit/integration test layer, and **Playwright** for browser/end-to-end tests (detailed strategy in `docs/testing.md`, Prompt 09).
+- **Vitest** for the unit/integration test layer, and **Playwright** for browser/end-to-end tests (detailed strategy in `docs/testing.md`).
 - **Sentry (or an already-agreed equivalent)** for error reporting, server and client (architecture §14, security.md §21).
 - **A single structured (JSON) server-side logger** carrying request/user/batch correlation ids (architecture §14).
 - **Keyset/cursor pagination** — never offset pagination — for incremental list views such as the batch gallery (architecture §19, supported by the index in `database.md` §10 #2).
@@ -163,7 +163,7 @@ Everything on this list was already chosen in an earlier document. Adding to it 
   - An upload that never reaches finalize is an orphan handled by the scheduled sweep, never by client-side cleanup logic (architecture §13).
 - **Destructive-action confirmation scales with blast radius:**
   - Removing a member, or resolving a report: an explicit confirmation step.
-  - Deleting a memory or comment: confirmation, and it is a soft delete either way (`database.md` §12).
+  - Deleting a memory or comment, **where that delete is actually in scope and the caller is authorized for it**: an explicit confirmation, and it is a soft delete either way (`database.md` §12). This rule governs *how* an authorized delete behaves — it does not itself grant one. Author self-delete of a memory is gated on PRD #7, author self-delete of a comment is not in MVP phase scope, and both go through the controlled path rather than a direct `deleted_at` write (security.md §5.4.3).
   - **Ownership transfer and batch deletion are the highest tier** — explicit confirmation naming the target (the batch name, for deletion), with re-authentication before the action proceeds recommended given there is no MFA in MVP (security.md §2, §11, §24, R3). `security.md` names exactly these two actions as irreversible-in-practice.
 - Errors surfaced from a privileged RPC (§1.3) reach the UI in the same generic shape as any other authorization failure — the RPC's internal reasoning is a log detail, never a user-facing message.
 
@@ -190,7 +190,7 @@ Every future AI coding session working on this repository must:
 
 - **Accessibility.** Every core flow named in PRD §19 (signup/login, onboarding, batch creation, join, upload, gallery browsing, memory detail, comments, reactions) is operable by keyboard and screen reader. Interactive elements carry accessible names/labels. Color contrast and type stay legible at shipped sizes. Motion respects `prefers-reduced-motion` (§1.5).
 - **Responsive design.** Mobile-first per project-context §9.4 and PRD §10.3: build and test the small-screen layout first, then verify the same flow at larger breakpoints before calling a UI task done.
-- **Tests.** The tooling is already locked: **Vitest** is the project's unit/integration test layer, and **Playwright** is the browser/end-to-end test layer. The detailed strategy (coverage expectations, CI wiring) belongs to `docs/testing.md` (created in a later planning step, Prompt 09), but two rules hold regardless of that document's specifics: (1) the adversarial RLS/Storage tests `security.md` §5.6 requires (non-member, pending requester, rejected requester, removed member, cross-batch, and the column-level forgery attempts in §5.4.1/§5.6) are required for any table or policy that ships, not optional polish; (2) a test is not "passing" unless it was actually executed — see §6 rule 6.
+- **Tests.** The tooling is already locked: **Vitest** is the project's unit/integration test layer, and **Playwright** is the browser/end-to-end test layer. The detailed strategy (coverage expectations, CI wiring) lives in `docs/testing.md`, but two rules hold regardless of that document's specifics: (1) the adversarial RLS/Storage tests `security.md` §5.6 requires (non-member, pending requester, rejected requester, removed member, cross-batch, and the column-level forgery attempts in §5.4.1/§5.6) are required for any table or policy that ships, not optional polish; (2) a test is not "passing" unless it was actually executed — see §6 rule 6.
 - **Linting.** The project's lint configuration (ESLint, via Next.js's recommended setup) runs clean before work is considered done. A warning is fixed or explicitly justified in the change description — never silently ignored.
 - **Dependency scanning.** `pnpm audit` (or its CI equivalent) runs against production dependencies and fails the build on high-severity advisories — the pnpm-consistent form of the gate `security.md` §30 describes. `npm audit` does not apply; pnpm is the only package manager (§2).
 - **Type checks.** The TypeScript compiler / Next.js build's type-checking step passes with zero errors under the strict settings in §1.1. Type errors are not suppressed with `@ts-ignore` / `@ts-expect-error` except in a narrowly scoped, commented, genuinely unavoidable case.
@@ -219,4 +219,4 @@ Every future AI coding session working on this repository must:
 
 ---
 
-STOP — Prompt 06 complete. `docs/design.md` is **not** started, no application code, migrations, or SQL files were created, and no packages were installed. Awaiting the next instruction.
+Prompt 06 complete. Current project status and next allowed task are tracked in `docs/memory.md`.

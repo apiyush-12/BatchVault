@@ -14,7 +14,9 @@ Target: PostgreSQL (Supabase), single database, RLS on every table.
 
 ## 1. Entity Overview
 
-### 1.1 MVP tables — created now
+### 1.1 MVP tables — planned, to be created during MVP implementation
+
+*(No product table exists yet. These are created by the phase that owns them, per `phases.md`; this document specifies them, it does not mean they have been built.)*
 
 | Table | Purpose | Batch-scoped |
 |---|---|---|
@@ -702,7 +704,7 @@ Append-only record of privileged actions (architecture §14).
 
 **`detail jsonb` is the single place JSON is used in this schema**, and the exemption is narrow and defensible: the payload differs per action (old role → new role, previous settings, removal reason), it is written once and never updated, and it is never joined or filtered on relationally. Every other table uses real columns. This is the exception that proves the "do not use JSON for everything" rule rather than an erosion of it.
 
-**Append-only is enforced by privilege, not by trigger.** No role is granted `UPDATE` or `DELETE` on this table; RLS grants `SELECT` to batch admins for their own batch and `INSERT` to the functions that perform privileged actions. A trigger that raises on `UPDATE` would be business logic in a trigger and is unnecessary when the grant system already says it.
+**Append-only is enforced by privilege, not by trigger.** No role is granted `UPDATE` or `DELETE` on this table, and `INSERT` belongs to the functions that perform privileged actions. **Admin+ read access is not an ordinary direct-client `SELECT` surface** — `security.md` §5.4 keeps `audit_logs` off the directly-queryable API and exposes it through a narrow authorized access path instead; direct client grants are revoked rather than merely policy-restricted (`security.md` §5.1 ground rule 6). The schema is unchanged by this; only the access shape is narrower than "a normal table read." A trigger that raises on `UPDATE` would be business logic in a trigger and is unnecessary when the grant system already says it.
 
 **Audit rows are written by the application, inside the same transaction as the action they describe** — specifically by the SQL functions that perform those actions (architecture §6). Not by triggers: deciding *what is worth auditing* is a product judgement, and burying it in a trigger hides it from the code review that should be scrutinising it.
 
@@ -1067,7 +1069,7 @@ Design in §3.10. The strategy in five points:
 2. **Written in-transaction by the SQL function performing the action** — never by a trigger, never as a fire-and-forget afterthought. If the action commits, the audit row commits with it; if it rolls back, so does the record.
 3. **Append-only by privilege** — no `UPDATE`/`DELETE` grant to any application role, rather than a trigger that raises.
 4. **Historical facts are frozen, not re-derived** — `actor_role` stores the role held *at the time*; `target_id` carries no FK so the record survives its subject's deletion.
-5. **Readable by batch admins for their own batch** (via the normal batch-scoped RLS shape), because PRD §17 gives them a moderation story they need to be able to justify.
+5. **Readable by batch admins for their own batch** — but through the narrow authorized access path `security.md` §5.4 defines, **not** as an ordinary direct-client table read (§3.10). PRD §17 gives admins a moderation story they must be able to justify; that need is met without opening the table to direct client queries.
 
 `detail jsonb` is the single JSON column in the schema, justified in §3.10: heterogeneous per action, write-once, never queried relationally.
 
@@ -1263,4 +1265,4 @@ Post-MVP, designed but **not created**: `albums`, `album_memories`, `memory_peop
 
 ---
 
-STOP — Prompt 04 complete. `docs/security.md` is **not** started, no migrations or SQL files were created, and no RLS policies were written. Awaiting the next instruction.
+Prompt 04 complete. This document specifies the data model; it created no migrations, SQL files, or RLS policies, and no product table exists yet. Current project status and next allowed task are tracked in `docs/memory.md`.

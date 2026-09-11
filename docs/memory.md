@@ -117,7 +117,7 @@ Key schema ideas to remember:
 - Soft deletion is used for preservation-sensitive content (memories, media, comments, batches); hard delete only via a later, object-first, retention-window sweep.
 - Invite: token hash only — the raw token is never stored.
 
-Post-MVP tables (`albums`, `album_memories`, `notifications`, `time_capsules`, `time_capsule_entries`, `yearbook_entries`, `institutions`, `courses`) are designed in `database.md` but **not created**.
+Post-MVP tables (`albums`, `album_memories`, **`memory_people`** — manual people tagging, never facial recognition — `notifications`, `time_capsules`, `time_capsule_entries`, `yearbook_entries`, `institutions`, `courses`) are designed in `database.md` but **not created**.
 
 ## Important Paths
 
