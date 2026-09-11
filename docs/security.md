@@ -195,6 +195,8 @@ For some rows that is enough — a comment is a batch id, a memory id and some t
 
 Each is exposed instead as a **narrow, validated SQL function (RPC)** — or an equivalent server-controlled transactional path — that derives the caller from `auth.uid()`, authorizes explicitly, and performs the whole operation in one transaction.
 
+**This list is the complete set of *high-risk* privileged operations, and it does not change.** A second, much narrower category also exists — single-field controlled writes that let the product legitimately set a protected system field (for example, completing one's own onboarding). Those are **not** on this list, are not security-critical multi-row operations, and are specified separately in **§5.4.3**.
+
 **RLS remains enabled and forced on every one of these tables**, and the policies remain the guarantee for everything *reading* those rows afterwards. But the write path itself needs a more careful account than "it sits on top of RLS" — see §5.2.2.
 
 **Concretely, the rule that must not be violated:** *no policy may exist that lets a caller create their own `batch_members` row by supplying a batch id.* That single permission would make every invite control in §9 decorative — an attacker who learns a batch id could simply join. Membership rows come from the redemption function or from a moderator's decision, never from a client-authored `INSERT`.
@@ -281,7 +283,7 @@ Notation: **member** = active membership at any role; **mod+** = moderator, admi
 | `batches` | Members of that batch. Plus a **deliberately minimal** unauthenticated read for invite landing (§9) — name only, delivered through a function, not by opening the table | **RPC only** — atomic create-batch-with-owner (§5.2.1). No direct insert, so no batch can exist without an owner | **RPC only** — admin+ settings changes | None — soft delete only, owner, ordered (§24) |
 | `batch_members` | Members see the roster of their own batches. A pending requester sees **only their own row**, so they can tell their request is pending without learning who else is in the batch | **RPC only.** Rows are created by invite redemption or by the batch-creation function. **A caller can never insert a membership by supplying a batch id** | **RPC only** — approval/rejection/removal and role changes, each enforcing the §4 and §11 ceilings | None — status transitions only (database.md §12) |
 | `batch_invites` | admin+ of that batch, **excluding `token_hash`** (column privilege, §9) | **RPC only** — the server generates and hashes the token; a client-supplied hash would be a forged credential | **RPC only** — admin+ revoke; `use_count` moves only inside the redemption transaction | None while the batch lives (database.md §3.4) |
-| `memories` | member, `deleted_at IS NULL`, *(post-MVP: and not capsule-locked, §5.5)* | **RPC only** — created by media finalize, which owns the transaction | Author edits own caption/metadata (direct DML acceptable, policy-checked); removal by mod+ is RPC (audited) | None — soft delete only |
+| `memories` | member, `deleted_at IS NULL`, *(post-MVP: and not capsule-locked, §5.5)* | **RPC only** — created by media finalize, which owns the transaction | Author edits own caption/metadata (direct DML acceptable, policy-checked); removal by mod+ is RPC (audited); author self-delete is **gated on PRD #7** and, if permitted, uses the controlled path in §5.4.3 — never a direct `deleted_at` write | None — soft delete only |
 | `media_assets` | member, and only rows whose memory is visible to them; `pending`/`rejected` rows readable only by their uploader | **RPC only** — preallocation composes the storage path server-side | **RPC only** — finalize writes authoritative object metadata; mod+ removal | None — soft delete, then privileged reap |
 | `comments` | member, `deleted_at IS NULL`, **and the parent memory is visible** (§5.4.2) | Direct DML acceptable: member, with a write-side check that `batch_id`/`memory_id` resolve to a batch they are actively in **and that the parent memory is currently visible and open to interaction** | Author edits own body (direct); mod+ removal is RPC (audited) | None — soft delete only |
 | `reactions` | member, **and the parent memory is visible** (§5.4.2) | Direct DML acceptable: member, **for themselves only** — `profile_id` is bound to `auth.uid()` by the database, not taken from the payload (§5.4.1) — **and the parent memory must be visible and open to interaction** | Own reaction only, `kind` only | Own reaction only |
@@ -356,6 +358,34 @@ Comments and reactions are **not independently visible just because the caller i
 
 This applies to **direct reads and direct DML alike**, which is the point: a client holding `INSERT` on `comments` will post to any memory id it can name, so the parent-visibility test has to live in the write-side check rather than in the UI that normally prevents it.
 
+#### 5.4.3 Controlled write paths for protected system fields
+
+*(Added by the Prompt 11 audit, which found that a protected field can be specified as unwritable without any documented way for the product to legitimately set it — an implementation-blocking gap, not a security decision.)*
+
+A field being **unwritable by ordinary DML** does not mean it is unwritable by the system. Some protected system fields must still change as a normal part of the product working. Those changes happen through a **narrow controlled write path** — a single-purpose, database-enforced mutation whose only job is to set that one field under a precondition the caller cannot influence.
+
+**This category is deliberately distinct from the high-risk RPC-only operations in §5.2.** Those eleven operations are multi-row, privilege-sensitive, and security-critical. A controlled system-field write is narrower: one field, one precondition, no role hierarchy to adjudicate. Listing it here does **not** expand §5.2's list, and does **not** make the field client-writable.
+
+Every controlled system-field write path must:
+
+- derive the acting user from `auth.uid()` — never from a parameter;
+- **set the protected field server-side** (e.g. to `now()`), never from a caller-supplied value — a caller must not be able to choose a system timestamp (§13);
+- expose **no other column** for writing through that path;
+- enforce its precondition in the database, not in the application;
+- follow the same hardening as any privileged function where it executes as one (schema-qualified names, pinned safe `search_path`, no dynamic SQL, minimum `EXECUTE` grants — §5.2.2);
+- have both a positive test (the legitimate path succeeds) and a negative test (the field remains unwritable by direct DML) — §5.6.
+
+**The cases this covers in MVP:**
+
+| Protected field | Legitimate change | Precondition the database enforces |
+|---|---|---|
+| `profiles.onboarding_completed_at` | Marking one's **own** onboarding complete, so the caller can proceed past the onboarding gate (architecture §4; PRD §9.2; database.md §3.1) | Target row is the caller's own profile; the required profile fields are actually present; the value is server-generated; re-running does not rewrite an already-set completion |
+| `profiles.avatar_path` | The controlled avatar upload/change flow (§5.4.1 above) | Path is a caller-owned, server-generated avatar path whose first segment `= auth.uid()` (§6.1) |
+| `memories.deleted_at` / `deleted_by` — **author self-delete** | **Gated: only if and when PRD unresolved decision #7 permits author self-delete, including any time limit.** Moderator removal is already an audited RPC (§5.4, §19) | Caller is the author; the memory is currently visible to them; any PRD #7 time limit has not elapsed; `deleted_by` is set from `auth.uid()` |
+| `comments.deleted_at` / `deleted_by` — **author self-delete** | **Not in MVP phase scope** (`phases.md` Phase 6 ships comment create + author body edit only). `database.md` §3.7 anticipates the column supporting it; that is a schema affordance, not a shipped capability | If it is ever scheduled, same shape as the memory case above, decided separately — comment and memory self-delete rules are **not** assumed identical |
+
+No final SQL function names or signatures are fixed here; only the invariants are. An implementer may satisfy a row in this table with a narrow function, a tightly-scoped policy plus column grant, or an equivalent database-enforced mechanism — provided a direct PostgREST write of the protected field still fails.
+
 ### 5.5 Post-MVP predicates that must not be forgotten
 
 - **Time capsules** add one clause to the payload-bearing rows: content is invisible while `locked_until` is in the future, evaluated at read time. Both `memories` and `time_capsule_entries` carry their own lock, because a lock on the grouping table protects nothing (database.md §22). **No scheduled job unlocks content** — a cron that fires early is a privacy breach and a cron that fails is a broken promise.
@@ -383,6 +413,7 @@ Policies fail *silently* when they are too permissive — nothing errors, nothin
 - A **profile owner** editing their own profile attempts to rewrite `id`, or to set `deleted_at` or another system/deletion field.
 - A **profile owner** attempts to set `avatar_path` to **another profile's** avatar object, and separately to an arbitrary or batch-media path.
 - **One authenticated user attempts to INSERT a profile row whose `id` is another auth user's id** — it must fail, or the supplied id must be overridden by `auth.uid()`; a profile for an identity you do not own must never come into existence.
+- **Each controlled system-field write path (§5.4.3) gets a matched pair**: the legitimate path succeeds for its own row under its precondition (e.g. a user completes their own onboarding), **and** the same field remains unwritable through ordinary direct DML — including an attempt to set it on *another* user's row, and an attempt to supply a caller-chosen timestamp rather than the server-generated one.
 - A caller inserting a comment or reaction supplies an `author_id` / `profile_id` **other than their own** and is rejected (or has it overridden by the database default — whichever mechanism §5.4.1 selects, the outcome must be that the forged value never persists).
 - A **role-change caller forges their actor role** in the request payload while requesting an otherwise-legitimate target role — for example a moderator claiming to be an owner while promoting someone to admin — and the RPC resolves their real role from `batch_members` and refuses.
 
@@ -861,7 +892,7 @@ Notes: Supabase applies its own limits to auth endpoints, but **invite redemptio
 
 ## 23. Memory Deletion
 
-- **Who:** the author, or mod+ of the batch.
+- **Who:** mod+ of the batch always; **the author only if PRD unresolved decision #7 permits author self-delete** (including any time limit it sets). The Prompt 11 audit flagged that an earlier draft of this line asserted author self-delete as settled while PRD #7 still leaves "whether a Member can edit or delete their own uploaded memory, and any time limits" open — that decision is **not** made here. Whichever way #7 resolves, the deletion fields are never client-writable: author self-delete, if permitted, runs through the controlled write path in §5.4.3.
 - **How:** soft delete. Hidden from every read path immediately (§5.1), recoverable within the retention window, then hard-deleted with **Storage objects removed before the row**, so the pointer is never lost while the bytes remain (database.md §24).
 - **Audited** when performed by a moderator, since that is a contested action.
 - **Residual exposure:** a signed URL minted just before deletion remains valid until it expires (§8). Short TTLs bound this for application-minted URLs; a member who minted their own could hold it longer (§8.1) — part of the inherent limit that a member who could already see the memory may have kept a copy.

@@ -14,7 +14,7 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
-**Planning complete; implementation not started.** Documentation Prompts 01–09 are complete and committed. Prompt 10 (this file) is in progress. No application code, migrations, or product tables exist. No MVP feature phase has started.
+**Documentation planning complete and audited; implementation not started.** Documentation Prompts 01–11 are complete, including the Prompt 11 documentation audit. No application code, migrations, or product tables exist. No MVP feature phase has started. **Current implementation phase: NONE.**
 
 ## Completed
 
@@ -29,11 +29,26 @@ Planning documents, all committed:
 7. `design.md`
 8. `phases.md`
 9. `testing.md`
-10. `memory.md` — this file (in progress)
+10. `memory.md` — this file
+11. **Prompt 11 documentation audit — complete.** See Audit Record below.
 
 ## Current Work
 
-No implementation work is in progress. Prompt 11 (Documentation Audit) is next. Implementation (Phase 0 / Prompt 12) begins only after that audit, and only on explicit instruction.
+No implementation work is in progress, and none has ever started. The next allowed task is **Phase 0 / Prompt 12**, on explicit instruction.
+
+## Audit Record (Prompt 11)
+
+The audit reconciled the documentation set before implementation. Summary of what changed — concise by design, not a file-by-file changelog:
+
+- **Locked stack made unambiguous.** `project-context.md` §10 still framed the stack as "a direction, not a final architectural commitment" and omitted pnpm, Vitest, Playwright, Lucide React, React Hook Form and Zod — which `rules.md` had since locked. A Phase 0 agent could have read that as license to pick npm/Jest. Now reconciled; the stack itself was **not** changed.
+- **A missing controlled write path was specified.** `onboarding_completed_at` was protected from ordinary DML with no documented way for onboarding to legitimately complete — an implementation blocker for Phase 1. `security.md` §5.4.3 now defines narrow controlled system-field write paths, explicitly distinct from the fixed high-risk RPC-only list, with no function names invented.
+- **Author self-delete reconciled with the still-open PRD #7.** `security.md` §23 had asserted author self-delete as settled; it is now correctly conditional, and wherever it is eventually permitted it runs through the controlled path rather than a direct `deleted_at` write. Comment self-delete is treated **separately** from memories and is not in MVP phase scope.
+- **Authorization-boundary language made consistent.** `architecture.md` §5/ADR-03 carried the pre-`security.md` absolute "RLS is the guarantee" framing; it now states the three-form model (RLS + column-level; Storage RLS; a privileged function's own checks).
+- **Q4 kept genuinely open.** `design.md` wording that assumed generated derivatives ("a distinct, generated derivative", "the full derivative") is now neutral between Q4's two options.
+- **Prompt-pack drift documented.** The conflicts in prompts 17, 18 and 20 are in their **bodies**, not just filenames (17 lists albums as expected capabilities; 18 lists "basic notifications"; 20 sketches an export archive containing album/yearbook data while Q9 is open). `phases.md` now records this; the prompt files were not modified.
+- **Two stale/missing register entries fixed.** PRD unresolved #4 was in fact settled by `security.md` §10 (invite-link entry only; batches are not discoverable) and is now recorded as resolved; PRD #8 was missing from the gate register and is now tracked as non-blocking.
+
+No product, architecture, database, or security decision was invented, and no open decision was silently resolved.
 
 ## Locked Stack
 
@@ -66,6 +81,8 @@ No alternative stack choice (a second test framework, a second package manager, 
 - Raw invite tokens are **never stored** (only a SHA-256 hash) and must never appear in a URL path/query string or any logging position — they travel in the URL fragment, POSTed to redemption.
 - Signed URLs follow the adopted **Option B** model (`security.md` §8.1): a member who already holds Storage `SELECT` access can mint their own signed URL directly; the app's TTL and rate limits bound only the app's own minting path, never a client-minted URL.
 - Column-level forgery (`batch_id`, author/profile id, deletion fields) must be rejected at the database, never merely hidden in the UI.
+- A protected system field still needs a **narrow controlled write path** (one field, own row, server-set value, database-enforced precondition, no other column exposed — `security.md` §5.4.3). This is **separate from** the high-risk RPC-only list and is never solved by making the field client-writable.
+- **Batches are not discoverable.** No search, no directory, no endpoint confirming a batch exists from its id; entry is by invite link only (`security.md` §10).
 
 ## High-Risk RPC-Only Operations
 
@@ -127,41 +144,65 @@ Per `phases.md`, all phases currently **not started**:
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: NONE** — documentation planning is still in progress.
+**Current implementation phase: NONE** — documentation planning and the Prompt 11 audit are complete; Phase 0 has not begun.
 
 ## Post-MVP Boundaries
 
 Not designed further, and not implemented in any MVP phase: **albums, notifications, time capsules, yearbook, public showcase, advanced search/discovery, richer media processing/transcoding, AI features.**
 
-Prompt-pack filename conflicts — documentation wins over filenames (`phases.md`):
+Prompt-pack conflicts — **documentation wins over the prompt files** (`phases.md`, "Prompt-Pack Mapping and Conflicts"). The Prompt 11 audit confirmed these conflicts are in the prompt **bodies**, not only their filenames:
 
-- Prompt 17 (filename contains "ALBUMS") — albums remain post-MVP; that phase builds gallery/timeline/detail only.
-- Prompt 18 (Social) — must not add notifications; comments/reactions only.
-- Prompt 19 (Capsule/Yearbook) — has no MVP scope; decline the build if run, and cite `phases.md` Phase 7.
-- Prompt 20 (…Export) — export work is gated by the unresolved Q9/R10 decision below; not built until it is decided.
+- **Prompt 17** — its body lists "albums" and "add/remove memories from albums" as expected capabilities. Albums remain post-MVP; build gallery/timeline/detail only, and create no album table or UI.
+- **Prompt 18** — its body lists "basic notifications" and "notification privacy". Notifications remain postponed; build comments/reactions only.
+- **Prompt 19** — its body is a full capsule/yearbook build brief. Phase 7 has no MVP scope; decline the build and cite `phases.md` Phase 7.
+- **Prompt 20** — its body sketches an export archive including album and yearbook data while Q9/R10 is still open. No export surface ships until Q9 is decided, and post-MVP data cannot appear in one.
+- **Prompt 12** — its body asks for "packages to use" and names "test framework" as an expected area without listing them. These are **not** open choices; the stack is locked (above).
 
 ## Known Issues / Open Decisions
 
-None of these is decided here or in any doc yet. **Do not resolve any of them silently** — a resolution updates its authoritative source document first.
+None of these is decided in any doc yet. **Do not resolve any of them silently** — a resolution updates its authoritative source document first, then this file.
 
-- **B2** — the `SECURITY DEFINER` / `FORCE RLS` / function-owner execution model must be **verified in the real Supabase environment** during Phase 0, before any dependent RPC or membership-helper policy is trusted.
-- **B1** — EXIF/GPS handling: must be decided before Phase 4A (media) implementation, and closed before release.
-- **B3 / Q3** — owner-account-deletion behavior (block-pending-transfer / auto-promote / claimable-ownerless) — unresolved.
-- **B4** — platform-level moderation path for a hostile owner / illegal content — required before release, not yet designed.
-- **Q1** — `join_policy` default and whether it's owner-configurable.
-- **Q2** — reaction `kind` allowlist.
-- **Q4** — image derivative strategy (Storage transformations vs. generated derivatives).
-- **Q5** — distinguishing a stated vs. defaulted `occurred_on`, if ever needed.
-- **Q7** — audit rows after batch hard-delete (`batch_id` becomes `NULL`).
-- **Q9 / R10** — export scope and format.
-- **R1** — signed-URL TTL value.
-- **R2** — private-media-vs-image-optimizer delivery design.
-- **R6** — HEIC product behavior.
+Classified by the Prompt 11 audit. The classification matters: **nothing blocks Phase 0 entry.**
+
+**A — Blocks Phase 0 entry: NONE.**
+
+**B — Must be resolved *during* Phase 0**
+- **B2** — the `SECURITY DEFINER` / `FORCE RLS` / function-owner execution model must be **verified in the real Supabase environment**. Phase 0 is where this gets proven; it then **blocks Phase 2** and every later privileged-RPC/membership-helper policy until recorded.
+
+**C — Blocks a later implementation phase**
+- **Q1** — `join_policy` default and whether it's owner-configurable → Phase 2 / 3A.
+- **B1** — EXIF/GPS handling → must be decided before Phase 4A (two of the four options change the upload pipeline); also a release blocker (D).
+- **Q4** — image derivative strategy (Storage transformations vs. generated derivatives) → Phase 4A.
+- **R1** — signed-URL TTL value → Phase 4A.
+- **R2** — private-media-vs-image-optimizer delivery design → Phase 4A, re-verified 5A.
+- **R6** — HEIC product behavior → Phase 4A UX, revisited Phase 9.
+- **Q5** — stated vs. defaulted `occurred_on`, if ever needed → Phase 4A/5B (may resolve as "no change").
+- **PRD #7** — member memory edit/delete rights and any time limit → Phase 4B.
+- **Q2** — reaction `kind` allowlist → Phase 6.
+- **PRD #5** — retention policy for removed/reported content → Phase 8A.
+- **PRD #6** — batch-deletion mechanics (immediate vs. grace period) → Phase 8B.
+- **B3 / Q3** — owner-account-deletion behavior (block-pending-transfer / auto-promote / claimable-ownerless) → Phase 8B; the account-deletion flow must not ship without it.
+- **Q7** — audit rows after batch hard-delete (`batch_id` becomes `NULL`) → Phase 8B.
+- **Q9 / R10** — export scope and format → Phase 8B; until decided, **no export surface ships**.
+- **R3** — whether re-authentication is added before destructive actions → Phase 8B.
+
+**D — Release blockers**
+- **B1** — EXIF/GPS handling must be implemented/closed before release (also C).
+- **B4** — platform-level moderation path for a hostile owner / illegal content; a missing capability, not yet designed.
 - **R9** — actual Supabase Storage response headers must be verified before release.
-- **PRD #5** — retention policy for removed/reported content.
-- **PRD #6** — batch-deletion mechanics (immediate vs. grace period).
-- **PRD #7** — member memory edit/delete rights and any time limit.
-- **R3** — whether re-authentication is added before destructive actions.
+- **R4** — account deletion does not delete contributions: honest user-facing wording plus legal review.
+
+**E — Accepted / tracked risks (no gate)**
+- **R5** — audit trail loses actor identity on account deletion (action/time/frozen role survive).
+- **R7** — no per-batch storage quotas.
+- **R8** — backups sit outside every control in `security.md`; organizational mitigation.
+- **Q6** — counter columns; **Q10** — UUIDv7 — both revisit-if-needed only.
+- **PRD #8** — distinguishing separate sections/years of the "same" institution; invisible in MVP because batches are never listed side by side.
+
+**F — Post-MVP open decisions**
+- **Q8** — whether a sealed time capsule's existence is visible before unlock.
+
+**Recently settled (do not reopen):** PRD #4 — entry is by **invite link only** and batches are not discoverable (`security.md` §10).
 
 ## Testing & Quality Rules
 
@@ -182,7 +223,7 @@ None of these is decided here or in any doc yet. **Do not resolve any of them si
 
 ## Next Task
 
-**Prompt 11 — Documentation Audit.** Implementation (Phase 0 / Prompt 12) begins only after that audit, and only on explicit instruction.
+**Phase 0 / Prompt 12 — Foundation**, on explicit instruction. The Prompt 11 audit is complete and Phase 0 is cleared to begin; no open decision blocks entry. **B2 must be verified during Phase 0** and then blocks Phase 2 until recorded.
 
 ## Update Rules
 
@@ -214,4 +255,4 @@ Every future session must:
 
 ---
 
-STOP — Prompt 10 complete. **Next Task: Prompt 11 — Documentation Audit.**
+STOP — Prompts 01–11 complete (documentation planning and audit). Implementation has **not** started. **Next Task: Phase 0 / Prompt 12 — Foundation**, on explicit instruction.

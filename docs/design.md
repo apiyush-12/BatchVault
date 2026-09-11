@@ -104,8 +104,9 @@ The most important surface-level decision in this document, because photography 
 
 - **Media is the hero of every surface it appears on** — full-bleed or near-full-bleed where reasonable, with minimal chrome overlapping it.
 - **Originals are never altered by the app.** They are preserved unmodified (project-context §9.10; architecture §9) — nostalgia comes from framing and motion, never from an artificial "aging" filter applied over a real memory.
-- **Aspect ratio**: memory detail (§32) preserves the true, uncropped photo; gallery thumbnails (§30) may crop to a consistent grid ratio for scannability, since that is a distinct, generated derivative, never the original (architecture §9).
-- **Blur-placeholder-first loading, always.** Every image resolves from its tiny stored placeholder (`database.md` §3.6 `blur_placeholder`) to the full derivative — never a blank box, never a layout shift (architecture §9, §18 below).
+- **Aspect ratio**: memory detail (§32) preserves the true, uncropped photo; gallery thumbnails (§30) may crop to a consistent grid ratio for scannability, since what the grid displays is a distinct, smaller **rendition**, never the original (architecture §9).
+- **Blur-placeholder-first loading, always.** Every image resolves from its tiny stored placeholder (`database.md` §3.6 `blur_placeholder`) to its display rendition — never a blank box, never a layout shift (architecture §9, §18 below).
+- **How that rendition is produced is an open decision (Q4) and this document does not assume either answer.** It may be a Storage-side transformation requested per URL, or a set of generated derivative assets stored alongside the original (architecture §9's (a)-vs-(b) choice; `database.md` Q4). The design requirement is only that the gallery never downloads full-resolution originals and that the original itself is never modified — both hold under either option.
 - **Video shows its poster frame first** (`database.md` §3.6 `poster_media_asset_id`); if no poster exists, a neutral, on-brand placeholder is shown — never a generic broken-image icon (architecture §10).
 - **An optional "keepsake" framing treatment** (soft shadow, rounded corner, slight lift — a nod to a printed photo edge) is available for hero/primary images, used sparingly rather than applied to every thumbnail in a dense grid (§7's density principle).
 - **Multi-asset memories** show their primary asset — position 0 (`database.md` §3.5–3.6) — first, with a simple "more inside" affordance (a stacked-photo cue; see "Dynamic Visuals" → photo stacks) rather than a generic carousel counter.
@@ -251,7 +252,7 @@ The most important surface-level decision in this document, because photography 
 
 - **The gallery is the product's core surface** (architecture §9) — chronological by default, ordered by `occurred_on` (`database.md` §3.5), with event-based grouping/filtering as the PRD-specified alternative view (PRD §9.13).
 - **Incremental, keyset/cursor-paginated loading** — never the whole archive at once (PRD §20; architecture §19; rules.md §2) — experienced by the user as smooth infinite scroll, not numbered pages.
-- **Every tile is blur-placeholder-first** (§11, §18); thumbnails are a distinct, smaller derivative, never the full-resolution original (architecture §9).
+- **Every tile is blur-placeholder-first** (§11, §18); thumbnails are a distinct, smaller rendition — produced by whichever mechanism Q4 selects (§11) — never the full-resolution original (architecture §9).
 - **Multi-asset memories** show their primary asset (position 0) with a lightweight "more inside" cue (§11).
 - **Tile → detail transitions feel continuous** (§28's "transition" category), not a hard page reload.
 - **Filtering/grouping controls stay quiet and secondary** — photography remains the visual majority of the screen at all times (§1, §3.6).

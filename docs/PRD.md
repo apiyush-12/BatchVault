@@ -263,7 +263,7 @@ Excluded from MVP (see Section 15 and Non-Goals):
 1. Exact default privacy posture per batch at creation (e.g., "invite-only, no approval needed" vs. "invite-only, approval required" as the out-of-the-box default).
 2. Whether membership approval is mandatory for all batches or a configurable Owner/Admin choice.
 3. Precise reaction set (e.g., a single reaction vs. a small fixed set) — kept unspecified pending design.
-4. Whether non-member "requests to join" without an invite link are allowed at all in MVP, or invite-only strictly (no discovery/search of batches).
+4. ~~Whether non-member "requests to join" without an invite link are allowed at all in MVP, or invite-only strictly (no discovery/search of batches).~~ **RESOLVED** (recorded by the Prompt 11 audit; decided in `security.md` §10, not here): **invite-link entry only.** Batches are not discoverable — no search, no directory, and no endpoint that confirms a batch exists from its id — so a stranger cannot generate join requests against a batch they were never given. `phases.md` Phase 2 and Phase 3A already exclude discovery accordingly. A join *request* still exists, but only as the `pending` state produced by redeeming a link into an approval-required batch.
 5. Retention policy for removed/reported content (hard delete vs. soft delete/audit trail).
 6. Batch deletion mechanics (immediate vs. grace period) given the preservation promise.
 7. Whether a Member can edit or delete their own uploaded memory after posting, and any time limits on that.

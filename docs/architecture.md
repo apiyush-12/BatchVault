@@ -139,6 +139,14 @@ Layer 3 — PostgreSQL Row Level Security (the guarantee)
    have a bug.
 ```
 
+**Refinement (added by the Prompt 11 audit; `security.md` §3 and §5.2.2 are authoritative).** Layer 3 has **two forms**, and conflating them is a mistake:
+
+- **Direct table access** — RLS is the boundary, *plus* column-level enforcement where a table is directly writable (`security.md` §5.4.1). A row policy alone never decides *which fields* a caller may control.
+- **Storage access** — **Storage RLS** is the boundary for media, and it must reflect the database's visibility state, not membership alone (`security.md` §7.1).
+- **Privileged database functions** that execute with rights the caller does not hold — there, RLS is *not* what authorizes the write; **the function's own explicit database-side authorization logic is the trusted boundary** for that operation (`security.md` §5.2.2).
+
+RLS remains enabled and `FORCE ROW LEVEL SECURITY` on every table regardless. Do not restate Layer 3 as the oversimplified absolute "RLS alone authorizes everything."
+
 Role model (PRD §12): Batch Owner > Batch Admin > Moderator > Member > (future) Guest/Public Viewer.
 
 Authorization principles:
@@ -492,7 +500,7 @@ Preservation is the product's core promise (project-context §7, §12; PRD §18)
 |---|---|---|---|
 | ADR-01 | Single Next.js application on Vercel; no microservices | One small team, one product, MVP scope. Service boundaries would add operational cost with no benefit at this size | All server logic lives in one deployable; scaling is vertical/tuning-first (§19) |
 | ADR-02 | Supabase (Auth + Postgres + Storage) as the single backend platform | Removes the need to build auth, storage, and a database layer separately; RLS gives database-level privacy enforcement | Vendor concentration — mitigated by module boundaries (§17) and independent export (§20) |
-| ADR-03 | Row Level Security is the authoritative authorization boundary | PRD §10/§11 require privacy enforcement below the application layer; a UI or action bug must not become a data leak | Every table needs policies; policy design becomes the highest-risk work item |
+| ADR-03 | The **database** is the authoritative authorization boundary — RLS for direct table access (plus column-level enforcement), Storage RLS for media, and a privileged function's own explicit checks for the writes it performs with rights the caller lacks (§5 refinement; `security.md` §3, §5.2.2, §7.1) | PRD §10/§11 require privacy enforcement below the application layer; a UI or action bug must not become a data leak | Every table needs policies; policy design becomes the highest-risk work item, and each privileged function is trusted security code reviewed as such |
 | ADR-04 | Defense in depth: authorize in Server Actions *and* in RLS | RLS alone gives correct-but-opaque failures; explicit checks give good errors and catch mistakes earlier | Duplicate expression of rules — mitigated by a single `authz` module mirroring SQL helper functions |
 | ADR-05 | Server Actions as the default write surface; Route Handlers only for cron/webhooks/media streaming | Fewer moving parts than a parallel REST layer; type-safe end to end | Conventions (§18) must be enforced by review, since Server Actions are easy to write carelessly |
 | ADR-06 | Private Storage buckets with short-lived signed URLs | A public bucket URL is an unauthenticated leak path and is incompatible with §11 | Signed-URL minting is on the read path; interacts awkwardly with image optimization (§9) |
@@ -534,7 +542,7 @@ BatchVault MVP is one Next.js (App Router, strict TypeScript) application on Ver
 
 ## Five Highest-Risk Architecture Areas
 
-1. **RLS policy correctness.** RLS is the entire privacy guarantee (ADR-03), and policy bugs fail silently — an over-permissive policy leaks a batch's archive with no error anywhere. This needs dedicated adversarial testing (a non-member attempting every read path), not incidental coverage. It is the single highest-risk area in the product.
+1. **RLS policy correctness.** RLS is the privacy guarantee for direct table access (ADR-03, as refined in §5 — privileged functions carry their own boundary), and policy bugs fail silently — an over-permissive policy leaks a batch's archive with no error anywhere. This needs dedicated adversarial testing (a non-member attempting every read path), not incidental coverage. It is the single highest-risk area in the product.
 
 2. **Service-role credential containment.** One accidental `NEXT_PUBLIC_` prefix, one import of the service-role client into a module reachable from the browser bundle, and every privacy guarantee is void at once. The blast radius is total and the mistake is a one-character kind of error.
 

@@ -81,6 +81,8 @@ No phase may **start** past its "must be resolved before" marker with the gate u
 | R3 | No MFA / step-up auth; re-authentication before destructive actions | security.md R3, §2, §24 | Phase 8B |
 | R4 | Account deletion does not delete contributions — wording + legal review | security.md R4, §22 | **Release gate in Phase 9** |
 | Q8 | Locked time-capsule visibility | database.md Q8 | Post-MVP only — not an MVP gate |
+| PRD #4 | **Already settled — recorded here so it is not reopened.** Whether non-members may request to join without an invite link: **no.** Entry is by invite link only, and batches are not discoverable — no search, no directory, no endpoint confirming a batch exists from its id (security.md §10) | PRD §"Unresolved" 4; settled by security.md §10 | Nothing — no gate. Enforced already in Phase 2 and Phase 3A's exclusions |
+| PRD #8 | Distinguishing legitimately separate sections/years of the "same" institution/course | PRD §"Unresolved" 8; database.md §1.3 | **No MVP gate.** The schema half is decided (free-text identity now, normalization path later); the product half is invisible in MVP because batches are never listed side by side. Tracked, revisit if discovery is ever built |
 
 ---
 
@@ -148,7 +150,7 @@ No phase may **start** past its "must be resolved before" marker with the gate u
 - Own-avatar upload through a controlled flow with a **server-composed** path `{profile_id}/{asset_id}` (security.md §6.1).
 - Forms via React Hook Form + Zod, with independent server-side Zod validation (rules.md §1.6; design.md §14).
 
-**Explicitly NOT in scope.** No batches, memberships, invites, memories, comments, reactions, or moderation. **No cross-member avatar visibility yet** — that rule becomes live in Phase 2 when `batch_members` exists. No MFA (security.md R3). No notifications.
+**Explicitly NOT in scope.** No batches, memberships, invites, memories, comments, reactions, or moderation. **No cross-member visibility yet** — security.md §5.4's "other profiles only where a batch is shared" read rule, and the matching avatar rule (§6.1), both depend on `batch_members`, which does not exist until Phase 2. In Phase 1, `profiles` reads and avatar reads are **own-row/own-object only**; the shared-batch clause is added in Phase 2, not stubbed or approximated here. No MFA (security.md R3). No notifications.
 
 **User stories.** As a new user I can create an account, verify my email, and complete my profile. As a returning user I can log in, log out, and reset my password. As a signed-out visitor I cannot reach an authenticated route.
 
@@ -156,6 +158,7 @@ No phase may **start** past its "must be resolved before" marker with the gate u
 
 **Security work.**
 - Column-level enforcement on `profiles`: `id` immutable on update, and `avatar_path`, timestamps, `deleted_at`, `onboarding_completed_at` not client-writable (security.md §5.4.1).
+- **A controlled write path for completing onboarding** (security.md §5.4.3): `onboarding_completed_at` stays unwritable by ordinary DML, but the user must still be able to finish onboarding. The mechanism sets the value **server-side** for the caller's **own** row under a database-enforced precondition, exposes no other column, and is **not** an addition to the high-risk RPC-only list (security.md §5.2). No final function name is fixed — only the invariant. The same shape covers `avatar_path`.
 - `avatar_path` set only by the controlled upload flow or database-constrained to a caller-owned, server-generated path whose first segment equals `auth.uid()`.
 - Avatar Storage policy: **self only** at this phase.
 - Redirect-target allowlisting on the auth callback (security.md §13).
@@ -365,7 +368,8 @@ Split into two sub-phases; the photo pipeline must be correct before video const
 - `video/mp4` (H.264 + AAC) only, with a hard size cap enforced from actual stored size and a **soft, client-side-only duration cap honestly labeled as UX validation** (architecture §10, ADR-08a; security.md §14).
 - Client-captured poster frame uploaded as a companion image; neutral on-brand placeholder when capture fails (architecture §10; design.md §11).
 - Progressive playback via short-TTL signed URL; **no transcoding, no HLS/DASH, no live streaming**.
-- Author edit of `caption` / `event_name` / `occurred_on` via policy-checked direct DML with the column set from 4A; soft delete of own memory (database.md §12).
+- Author edit of `caption` / `event_name` / `occurred_on` via policy-checked direct DML with the column set from 4A.
+- **Author self-delete of own memory — gated on PRD #7 and never a direct `deleted_at` write.** `memories.deleted_at`/`deleted_by` are protected columns (security.md §5.4.1), so if PRD #7 permits author self-delete, it runs through the controlled write path in security.md §5.4.3 (caller is the author, memory currently visible, any PRD #7 time limit not elapsed, `deleted_by` set from `auth.uid()`). If PRD #7 does not permit it, this phase ships author *edit* only and removal remains mod+ (audited RPC). Either way the phase does not invent the answer.
 - **Vercel Cron sweeps** (idempotent, bounded, service-role, object-first): orphaned `pending` uploads past a grace window, and `rejected` rows purged on the next pass (architecture §13; database.md §24).
 
 **Explicitly NOT in scope.** No authoritative duration/codec verification. No media processing pipeline. No richer transcoding (post-MVP). No moderator removal of others' content (8A).
@@ -484,7 +488,7 @@ Split into two sub-phases; the photo pipeline must be correct before video const
 - Optimistic UI via `useOptimistic`; no global client state manager for server data (architecture §2; rules.md §2).
 - Within-batch member profile view (display name, avatar, bio) reusing `features/profiles`.
 
-**Explicitly NOT in scope.** **No notifications of any kind** — no in-app feed, no push, no digest, no email (architecture §12, §22). No comment threading or replies. No reactions on comments (database.md §3.8). No counter columns (database.md Q6). No moderator removal of others' content (8A). No follower graph, DMs, or public feed — permanently excluded (PRD §4, §14).
+**Explicitly NOT in scope.** **No notifications of any kind** — no in-app feed, no push, no digest, no email (architecture §12, §22). No comment threading or replies. No reactions on comments (database.md §3.8). No counter columns (database.md Q6). **No author self-delete of a comment** — `database.md` §3.7's `deleted_by` note anticipates the column supporting it, but that is a schema affordance, not a scheduled capability; comment self-delete is **not** assumed to follow the memory rule (PRD #7 concerns memories only), and if it is ever wanted it needs its own decision plus the controlled write path in security.md §5.4.3. Removing one's own *reaction* is different and **is** in scope — reactions are hard-deleted by design and carry no protected deletion columns (database.md §3.8). No moderator removal of others' content (8A). No follower graph, DMs, or public feed — permanently excluded (PRD §4, §14).
 
 **User stories.** As a member I can comment on a memory and edit my own comment. As a member I can react and switch my reaction. As a member I cannot interact with a memory that was removed.
 
@@ -682,15 +686,15 @@ Later prompts are sequencing hints, not scope authority. **Where a prompt's name
 
 | Prompt file | Phase | Conflict / note |
 |---|---|---|
-| `12_PHASE_0_FOUNDATION.md` | 0 | Aligned. Adds the B2 verification gate |
+| `12_PHASE_0_FOUNDATION.md` | 0 | Aligned. Adds the B2 verification gate. **Body caution:** it asks for a plan naming "packages to use" and lists "test framework" as an expected area, without naming them — these are **not** open choices. The stack is locked (project-context §10, rules.md §1–2): pnpm, Vitest, Playwright, Zod, React Hook Form, Lucide React. Do not select alternatives |
 | `13_PHASE_1_AUTH_PROFILE.md` | 1 | Aligned |
 | `14_PHASE_2_BATCHES_MEMBERSHIP.md` | 2 (+3B) | Membership *decisions* moved to Phase 3B, where a second member exists |
 | `15_PHASE_3_INVITES_JOIN.md` | 3A / 3B | Aligned; split for session size. **No email provider** — invites are user-shared links (ADR-08b) |
 | `16_PHASE_4_MEMORIES_MEDIA.md` | 4A / 4B | Aligned; split so the photo pipeline is correct before video |
-| `17_PHASE_5_GALLERY_ALBUMS_TIMELINE.md` | 5A / 5B | **CONFLICT: "ALBUMS" in the filename does not schedule albums.** Albums are post-MVP; build gallery, timeline, and detail only |
-| `18_PHASE_6_SOCIAL.md` | 6 | **CONFLICT: notifications are postponed**, not part of the MVP social layer. Comments and reactions only |
-| `19_PHASE_7_CAPSULE_YEARBOOK.md` | 7 | **CONFLICT: both capsules and yearbook are post-MVP.** This phase has **no MVP scope**; decline the build and cite Phase 7 |
-| `20_PHASE_8_MODERATION_PRIVACY_EXPORT.md` | 8A / 8B | **Partial conflict: "EXPORT" is gated.** Export scope (Q9/R10) must be decided first; full export tooling is post-MVP (PRD §15) |
+| `17_PHASE_5_GALLERY_ALBUMS_TIMELINE.md` | 5A / 5B | **CONFLICT — and it is in the body, not only the filename.** The prompt lists "albums" and "add/remove memories from albums" as expected capabilities and refers to "album … queries". Albums are post-MVP (architecture §16, §22; database.md §1.2; PRD §15). **Build gallery, timeline, and memory detail only**; create no `albums`/`album_memories` table and no album UI |
+| `18_PHASE_6_SOCIAL.md` | 6 | **CONFLICT — also in the body.** The prompt lists "basic notifications" as an expected capability and "notification privacy" as a test target. Notifications are postponed (architecture §12, §22). **Build comments and reactions only**; create no `notifications` table and no notification surface. Treat its vague "relevant activity indicators" the same way — nothing that is a notification feed in disguise |
+| `19_PHASE_7_CAPSULE_YEARBOOK.md` | 7 | **CONFLICT — the body is a full build brief** (capsule creator/contribution permissions, unlock date, visibility, yearbook entries/quote/favorite memory). Both features are post-MVP. This phase has **no MVP scope**: decline the build, cite Phase 7, and confirm the reserved boundaries are still empty |
+| `20_PHASE_8_MODERATION_PRIVACY_EXPORT.md` | 8A / 8B | **Partial conflict — body pre-shapes an undecided design.** Its "Export direction" suggests an archive containing "album metadata" and "yearbook data" — both post-MVP data that will not exist in MVP — and sketches a format while **Q9/R10 (export scope and format) is still open**. It does say "follow the actual documented scope," which governs: no export surface is built until Q9 is decided, and no album/yearbook data can appear in one |
 | `21_PHASE_9_QUALITY_PRODUCTION.md` | 9 | Aligned. Carries the B1, B4, R9, R4, R6 release gates |
 
 ---

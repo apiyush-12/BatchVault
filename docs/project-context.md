@@ -52,7 +52,13 @@ User signs up → creates a batch → shares an invite → classmates join → m
 - PostgreSQL Row Level Security
 - Vercel
 
-This is a direction, not a final architectural commitment, and is not permission to begin implementation.
+**Status update (Prompt 11 documentation audit).** The direction above was the starting point at Prompt 01. It has since been confirmed and extended by `architecture.md` and `rules.md`, and the stack is now **locked** — it is no longer an open Phase 0 choice. The complete locked stack is:
+
+Next.js (App Router) · TypeScript (strict) · Tailwind CSS · shadcn/ui (vendored) · Framer Motion · **Lucide React** · **React Hook Form** · **Zod** · Supabase Auth · Supabase PostgreSQL · Supabase Storage · PostgreSQL Row Level Security · **Vitest** · **Playwright** · Vercel · **pnpm** · **Git / GitHub**.
+
+The bolded entries were locked after Prompt 01 and are authoritative in `rules.md` §1–2. No substitute may be introduced (no second package manager, test framework, UI/icon/form/validation library) without changing `architecture.md`/`rules.md` first. Supabase Storage remains the *initial* object store, contained behind the `media` module so the provider can change later (architecture §19).
+
+This section is still **not permission to begin implementation** — that remains gated by `phases.md` and the numbered phase prompts.
 
 ## 11. Non-Goals
 - Not a generic social network.
