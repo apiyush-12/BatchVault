@@ -1,0 +1,2 @@
+Reserved route group — the authenticated surface (architecture §16).
+Batch routes are created by the phase that owns them; no routes in Phase 0.

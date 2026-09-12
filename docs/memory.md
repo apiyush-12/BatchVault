@@ -14,7 +14,20 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
-**Documentation planning complete and audited; implementation not started.** Documentation Prompts 01–11 are complete, including the Prompt 11 documentation audit. No application code, migrations, or product tables exist. No MVP feature phase has started. **Current implementation phase: NONE.**
+**Phase 0 — Foundation: IN PROGRESS (not complete).** Documentation Prompts 01–11 are complete, including the Prompt 11 audit. The Phase 0 repository, toolchain, environment boundary, Supabase client boundaries, migration framework, private Storage buckets, test harnesses and CI are in place.
+
+**B2 is now CLOSED.** On 2026-09-12 the execution model was verified empirically against a **real hosted, non-production Supabase project** (`BatchVault-Dev`, ref `idmpwblennrdpasfnbyw`, PostgreSQL 17.6, `ap-southeast-1`) across two transports — direct SQL and the production PostgREST surface with a real Supabase Auth JWT. Full results, and the distinction between the earlier reconstructed findings and the real ones, are in `security.md` §32 "B2 verification status". The Supabase-dependent checks that had never run — migrations applied through the CLI, and Storage bucket privacy — were also executed against that project and passed.
+
+**The committed DB gate now also passes against the hosted project.** `pnpm test:db` → **26 passed, 0 failed, 0 skipped, 3 files**, harness reporting `kind: "supabase"`, `ownerRole: "postgres"`, PostgreSQL 17.6. B6 and B5 are both closed (below).
+
+**What remains before Phase 0 can be declared COMPLETE:** only the **git checkpoint** — `phases.md` Phase 0 Definition of Done includes "One commit: `chore: phase 0 foundation` … made only after gates pass", and nothing has been committed. A first green CI run follows naturally from that commit.
+
+A prior session over-stated two items as hard Phase 0 blockers; on review of `phases.md`, `testing.md` §1/§6 and `rules.md` §7 they are **not**:
+
+- *"CI must have executed"* — `testing.md` §1 defines **Executed** as "actually ran in a real session (**local or CI**)", and `testing.md` §6 (explicitly aligned with `phases.md`'s gate table and `rules.md` §7) names **no CI-execution gate**. `phases.md`'s own Git checkpoint puts the commit *after* gates pass, so requiring a green CI run first would be circular.
+- *"three environments must physically exist"* — `phases.md` says separate projects for **local / preview / production** and architecture §15 frames this as **per-environment isolation** with secrets in *Vercel project settings*. Phase 0 has no deployment scope; "production deployment readiness" is **Phase 9**. The Phase 0 criterion is the resolution/isolation mechanism, which the split typed env module already provides.
+
+No product table exists on the hosted project (verified: 0 tables in `public`). No auth flow, no feature module, and no product screen exists.
 
 ## Completed
 
@@ -34,7 +47,44 @@ Planning documents, all committed:
 
 ## Current Work
 
-No implementation work is in progress, and none has ever started. The next allowed task is **Phase 0 / Prompt 12**, on explicit instruction.
+**Phase 0 / Prompt 12 — Foundation, in progress.**
+
+What exists now (nothing here is a product feature):
+
+- **App**: Next.js 16 App Router, React 19, strict TypeScript (`strict`, `noUncheckedIndexedAccess`), Tailwind CSS v4, ESLint. One placeholder page proving the shell boots — deliberately not a dashboard or a landing page.
+- **Structure** per architecture §16: `app/` (thin; route groups reserved, no product routes), `features/<domain>/` boundary notes for the ten MVP domains, **empty reserved boundaries** for `albums`, `notifications`, `time-capsules`, `yearbook`, plus `components/ui`, `components/motion`, `components/theme`, `components/a11y`, `lib/{env,supabase,auth,authz,logging,validation}`, `types/`, `supabase/`.
+- **Environment boundary** (`lib/env`): pure Zod schemas plus split `client.ts` / `server.ts`; the server module is `server-only`. It refuses a service-role-shaped credential in the client key slot, refuses any `NEXT_PUBLIC_*` secret, and reports failures by variable **name** only. ESLint forbids `process.env` outside `lib/env`, config and tests.
+- **Supabase clients**: browser user-scoped, server user-scoped (cookie-bound), and a `server-only` service-role client with **zero call sites** and its allowlist documented in place.
+- **UI foundation**: shadcn/ui infrastructure (`components.json`) with one vendored primitive (`Button`), Lucide React, Framer Motion behind shared `components/motion` wrappers that resolve `prefers-reduced-motion` **once**, design tokens for design.md §4–9 in `app/globals.css`, light/dark with **system as default and no blocking inline script**, a visible focus ring, and skip-to-content.
+- **Database**: Supabase CLI config plus three migrations — the shared `set_updated_at()` housekeeping function, the two **private** Storage buckets, and the forward migration revoking `EXECUTE` on the housekeeping function from `PUBLIC` and each named client role (B5). **No product table.** No Storage policy (deny-by-default is the correct Phase 0 posture).
+- **Tests**: Vitest in three projects (`unit`, `db`, `artifacts`) and Playwright (mobile + desktop). Includes the B2 experiment, foundation-migration tests, a Storage-privacy suite, a client-artifact secret scan, and a11y/reduced-motion/theme E2E.
+- **CI**: `.github/workflows/ci.yml` with both gate sets. **Configured, never executed** — no commit or push has been made.
+
+### Gates executed 2026-09-12 against the hosted project (real output observed)
+
+Run with `corepack pnpm` (pnpm is not on PATH in that environment; a Corepack shim was used for Playwright's `webServer`, which invokes `pnpm`).
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | **PASS** |
+| Typecheck | `pnpm typecheck` | **PASS** |
+| Unit tests | `pnpm test:unit` | **PASS** — 22 tests |
+| Production build | `pnpm build` | **PASS** |
+| Client artifact scan | `pnpm test:artifacts` | **PASS** — 3 tests, run three ways: fresh bundle; with a service-role-shaped **canary** configured (0 occurrences in client output); and with the **real** service-role key from `.env.local` visible to the test (0 occurrences anywhere in `.next`). Grep mechanism proven functional by positive control. **Caveat, recorded deliberately:** `lib/supabase/client.ts` has **zero call sites**, so no `NEXT_PUBLIC_*` value is inlined and the client bundle is nearly empty — this gate is not yet stressed and only becomes load-bearing in Phase 1, when the browser client is first imported by a page |
+| Playwright | `pnpm test:e2e` | **PASS** — 16 tests (2 projects). One cold-start flake on the first attempt immediately after installing the browser (a11y scan hit the 30 s timeout); clean on re-run |
+| Dependency audit | `pnpm audit --prod --audit-level high` | **PASS** — no known vulnerabilities |
+| Hosted migration apply | `supabase db push --linked` | **PASS** — both migrations applied; `supabase migration list --linked` shows local == remote |
+| Hosted foundation verification | Management API SQL | **PASS** — 0 tables in `public`; `set_updated_at` the only `public` function (`prosecdef=false`); no policies anywhere outside catalogs |
+| Hosted Storage privacy | Management API SQL + real HTTP | **PASS** — both buckets exist and are `public=false`; no public bucket; no `showcase` bucket; 0 policies on `storage.objects`; RLS enabled on `storage.objects`. Anonymous HTTP: public-object endpoint **400**, object read **400**, upload **400** (nothing persisted), object list `[]`, bucket list `[]` |
+| **B2 execution model (hosted)** | Management API SQL + production PostgREST with a real Auth JWT | **PASS** — 22 direct-SQL findings + 13 PostgREST findings. **B2 closed**; see `security.md` §32 |
+| **Committed DB suite (hosted)** | `corepack pnpm test:db` | **PASS — 26 passed, 0 failed, 0 skipped, 3 files.** `kind: "supabase"`, `ownerRole: "postgres"`, PostgreSQL 17.6. Its `ownerIsRlsExempt()` branch took the *exempt* path, independently reproducing the `BYPASSRLS` finding |
+| CI | GitHub Actions | **NOT EXECUTED** — configured only; nothing has been committed |
+
+Earlier session, still true: two real defects were found and fixed by these gates rather than worked around — a `setState`-in-effect in the theme provider (replaced with `useSyncExternalStore`), and an axe contrast failure caused by scanning a half-faded entrance animation (the scan now waits for the settled UI).
+
+### Disposable probe hygiene (2026-09-12)
+
+Every B2 probe object was disposable and removed; removal was verified by query: `b2_probe_hosted` schema **dropped**, `b2_probe_owner` role **dropped**, all `public.b2p_*` functions and the `b2p_rows` table **dropped**, the disposable Auth user **deleted** (`auth.users` count = 0), 0 policies outside catalogs, 0 tables in `public`, `set_updated_at` the only `public` function. No permissive policy, debug function, test identity or experimental schema was left behind, and no existing security configuration was weakened to make anything pass.
 
 ## Audit Record (Prompt 11)
 
@@ -72,6 +122,8 @@ No alternative stack choice (a second test framework, a second package manager, 
 ## Security Invariants
 
 - **RLS is enabled and `FORCE ROW LEVEL SECURITY` from the migration that creates every table.** No table ships without it, ever.
+- **Every migration must `REVOKE` from the named client roles — `anon`, `authenticated`, `service_role` — never from `PUBLIC`.** Verified 2026-09-12: hosted Supabase's default privileges grant those roles full DML on new `public` tables and `EXECUTE` on new functions, and a `PUBLIC` revoke does not touch them (B5). Assert the resulting ACL in a test; do not assume it.
+- **A `SECURITY DEFINER` function owned by `postgres` bypasses RLS entirely** (verified: `postgres` holds `BYPASSRLS`, which beats `FORCE ROW LEVEL SECURITY`). Inside one, its own explicit `auth.uid()`-based checks are the *only* boundary — including a mandatory NULL branch, because `auth.uid()` is `NULL` for an anonymous caller. Never write owner-admitting policies; they are inert here.
 - Direct table access authorization = RLS (which row) **+** column-level enforcement (which fields) — row policy alone is never sufficient on a writable table.
 - **Storage RLS is the media authorization boundary**, and must reflect memory/media *state* (soft-deleted, moderated, pending, rejected) — not membership alone.
 - High-risk writes are **RPC-only** (list below). Inside a privileged RPC, the function's own explicit authorization logic — not RLS — is the boundary, because its execution role intentionally holds privileges the caller lacks.
@@ -127,9 +179,9 @@ Post-MVP tables (`albums`, `album_memories`, **`memory_people`** — manual peop
 
 ## Phase Plan
 
-Per `phases.md`, all phases currently **not started**:
+Per `phases.md`, Phase 0 is **in progress**; every later phase is **not started**:
 
-- Phase 0 — Foundation
+- Phase 0 — Foundation — **IN PROGRESS**
 - Phase 1 — Authentication & Profile
 - Phase 2 — Batch Spaces
 - Phase 3A — Invitations & Join
@@ -144,7 +196,7 @@ Per `phases.md`, all phases currently **not started**:
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: NONE** — documentation planning and the Prompt 11 audit are complete; Phase 0 has not begun.
+**Current implementation phase: Phase 0, in progress** — the foundation is built, **every runnable gate has been executed and passes** (including `pnpm test:db` at 26/26 against real Supabase), the hosted migration and Storage-privacy checks pass, and **B2, B5 and B6 are all closed**. The only outstanding Phase 0 item is the **git checkpoint**, which the working sessions were instructed not to make.
 
 ## Post-MVP Boundaries
 
@@ -167,7 +219,17 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 **A — Blocks Phase 0 entry: NONE.**
 
 **B — Must be resolved *during* Phase 0**
-- **B2** — the `SECURITY DEFINER` / `FORCE RLS` / function-owner execution model must be **verified in the real Supabase environment**. Phase 0 is where this gets proven; it then **blocks Phase 2** and every later privileged-RPC/membership-helper policy until recorded.
+
+- **B2 — ✅ RESOLVED 2026-09-12.** Verified against the real hosted project across two transports (direct SQL + production PostgREST with a real Supabase Auth JWT). Full results in `security.md` §32 "B2 verification status", which keeps the earlier reconstructed findings and the real ones clearly separated. **The decisive facts:**
+  - Supabase's `postgres` (which owns migrated objects) is **not** a superuser but **holds `BYPASSRLS`**. `anon`, `authenticated` and `authenticator` hold neither attribute, so no client role can ever bypass RLS.
+  - **`BYPASSRLS` beats `FORCE ROW LEVEL SECURITY`**, so a `SECURITY DEFINER` function owned by `postgres` **does** bypass RLS — the definer read 2/2 rows of a forced table whose policy admits 1, on both transports. This **supersedes** the reconstructed conclusion that definer alone is insufficient: that behaviour was real PostgreSQL behaviour for a non-exempt owner (re-proven here with a disposable non-`BYPASSRLS` owner: 0 rows, `42501`), but it is not Supabase's. **Do not write owner-admitting policies — they would be inert and would widen every policy they appear in.**
+  - Consequently a privileged RPC's own checks are **the only** boundary for its writes. Confirmed the hard way: removing a function's `auth.uid()` check let an unauthorized caller write.
+  - `auth.uid()` is preserved into a definer function as the JWT caller (`current_user=postgres`, `session_user=authenticator`); for an anonymous caller it is **`NULL`**, so the NULL branch is mandatory. **Never read `session_user` to infer the caller** — it is always `authenticator` over PostgREST.
+  - Forged actor/role parameters were ignored. Recursion reproduced: invoker helper in a self-referential policy → `54001`; definer helper → clean, own row only. The parameterised helper variant **leaked another user's membership**, confirming why §5.3 forbids the parameter.
+- **B5 — ✅ RESOLVED 2026-09-12.** Hosted Supabase's `ALTER DEFAULT PRIVILEGES` (24 `pg_default_acl` rows) grants `anon`, `authenticated` and `service_role` **full table DML (`arwdDxtm`)** on every new table in `public`, **`EXECUTE`** on every new function, and `rwU` on sequences — and **`REVOKE … FROM PUBLIC` does not remove it**, because these are explicit per-role grants. Observed: a probe table granted only `SELECT` to `authenticated` still had `anon=arwdDxtm`, its anon `INSERT` stopped by **RLS alone** (`42501`); a function revoked from `PUBLIC` was still executed by `anon`.
+  **Fix applied:** forward migration `20260912150000_foundation_revoke_set_updated_at_execute.sql` revokes `EXECUTE` on `public.set_updated_at()` from `PUBLIC` and from each named role (role-existence guarded, so it is valid on any environment). A **forward** migration, not an edit — the original was already applied remotely and remote history is not rewritten. Verified on hosted: ACL is now `postgres=X/postgres`; an `authenticated` direct call is refused `42501`; **trigger behaviour preserved** (`updated_at` advanced, forged value ignored, `created_at` untouched), because `EXECUTE` on a trigger function is checked at `CREATE TRIGGER`, not at fire time.
+  **The standing rule this leaves behind:** every migration from Phase 1 onward must `REVOKE` from `anon`/`authenticated`/`service_role` **by name** and assert the resulting ACL in a test — otherwise §5.2's grant-level control is aspirational and RLS silently becomes the only barrier.
+- **B6 — ✅ RESOLVED 2026-09-12.** `pnpm test:db` now executes against the hosted project via a `DATABASE_URL` in the git-ignored `.env.local`: **26 passed, 0 failed, 0 skipped**, harness reporting `kind: "supabase"`. The harness resolves the Supabase API URL and anon key from the **documented** names (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), loading `.env.local` only for keys absent from the environment, and **fails loudly rather than defaulting to localhost** when `DATABASE_URL` is remote but no API URL is configured. CI now exports those same documented names, so there is no second secret convention.
 
 **C — Blocks a later implementation phase**
 - **Q1** — `join_policy` default and whether it's owner-configurable → Phase 2 / 3A.
@@ -223,7 +285,18 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Phase 0 / Prompt 12 — Foundation**, on explicit instruction. The Prompt 11 audit is complete and Phase 0 is cleared to begin; no open decision blocks entry. **B2 must be verified during Phase 0** and then blocks Phase 2 until recorded.
+**Finish Phase 0** — and only that. Phase 1 / Prompt 13 is **not** yet the next allowed task.
+
+Done on 2026-09-12: the hosted project is linked, all three migrations are applied through the CLI, Storage privacy is verified, **B2 is closed**, and **B5 and B6 are closed**. Every runnable Phase 0 gate has been executed and observed passing, including the committed DB suite against real Supabase.
+
+What remains:
+
+1. **Commit Phase 0** — `phases.md` Phase 0 Definition of Done includes the git checkpoint ("One commit: `chore: phase 0 foundation` … made only after gates pass"). Gates have now passed; the commit has deliberately not been made because the working sessions were instructed not to commit.
+2. **Let CI run once** — the natural consequence of (1). Not itself a documented gate (see the note under "Current Phase"), but the first real execution of the configured workflow.
+
+Only once (1) is done may Phase 0 be marked COMPLETE and the next task advanced to **Phase 1 / Prompt 13 — Authentication & Profile**. Phase 1's first migration must apply the B5 standing rule: `REVOKE` from `anon`/`authenticated`/`service_role` by name, and assert the ACL.
+
+**Foundation configuration fact, corrected by measurement.** `supabase/config.toml` sets `auto_expose_new_tables = false`, which applies to the **local CLI stack only**. The hosted project does **not** behave that way: `ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated`/`service_role` full DML on new `public` tables and `EXECUTE` on new functions (B5). The earlier note that "each cloud project must be configured to match" was right to flag this — it is now confirmed that the cloud project does **not** match, and the required action is an explicit `REVOKE` in every migration (not a `PUBLIC` revoke, which does nothing here).
 
 ## Update Rules
 
@@ -255,4 +328,4 @@ Every future session must:
 
 ---
 
-STOP — Prompts 01–11 complete (documentation planning and audit). Implementation has **not** started. **Next Task: Phase 0 / Prompt 12 — Foundation**, on explicit instruction.
+STOP — Prompts 01–11 complete (documentation planning and audit). **Phase 0 / Prompt 12 is IN PROGRESS, pending only its git checkpoint.** As of 2026-09-12: the foundation is built, all three migrations are applied to the linked hosted project, Storage privacy is verified, **B2, B5 and B6 are all CLOSED**, and every runnable gate was executed and observed passing — including `corepack pnpm test:db` at **26 passed / 0 failed / 0 skipped** against real Supabase (`kind: "supabase"`). Outstanding: the commit (`chore: phase 0 foundation`) and the first CI run that follows it. **Next Task: commit Phase 0.** Phase 1 / Prompt 13 is not yet authorised.

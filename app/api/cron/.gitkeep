@@ -1,0 +1,3 @@
+Reserved — Vercel Cron Route Handlers (architecture §13, §18.9).
+Every handler verifies its shared secret before parsing the body.
+No routes in Phase 0.

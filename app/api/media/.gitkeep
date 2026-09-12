@@ -1,0 +1,4 @@
+Reserved — media Route Handlers, for the cases that must stream bytes or set
+headers (architecture §18). Any such route is a new authorization surface and
+gets the full security.md §5 treatment plus `Cache-Control: private, no-store`.
+No routes in Phase 0.

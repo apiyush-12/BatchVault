@@ -1,0 +1,211 @@
+@import "tailwindcss";
+
+/*
+ * BatchVault base design tokens (design.md §4–9).
+ *
+ * Colors are expressed as roles, never as one-off values: brand/primary,
+ * neutral surfaces, ink, accent, semantic states, overlay, focus ring.
+ * Dark mode is a separate warm-neutral palette, not an inversion (§5).
+ */
+
+/* Explicit override wins; otherwise the OS preference decides (design.md §5). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  color-scheme: light;
+
+  /* Neutral / surface scale — warm, so photography supplies the color. */
+  --bv-background: oklch(0.985 0.006 75);
+  --bv-surface: oklch(1 0 0);
+  --bv-surface-raised: oklch(0.995 0.004 75);
+  --bv-surface-sunken: oklch(0.955 0.008 75);
+  --bv-border: oklch(0.9 0.008 75);
+  --bv-border-strong: oklch(0.82 0.01 75);
+
+  /* Ink */
+  --bv-foreground: oklch(0.24 0.015 55);
+  --bv-foreground-muted: oklch(0.5 0.015 60);
+
+  /* Brand / accent */
+  --bv-primary: oklch(0.62 0.145 48);
+  --bv-primary-hover: oklch(0.57 0.15 48);
+  --bv-primary-foreground: oklch(0.99 0.005 75);
+  --bv-accent: oklch(0.66 0.13 340);
+  --bv-accent-foreground: oklch(0.99 0.005 75);
+
+  /* Semantic states */
+  --bv-success: oklch(0.58 0.12 150);
+  --bv-warning: oklch(0.72 0.13 78);
+  --bv-danger: oklch(0.55 0.19 27);
+  --bv-info: oklch(0.58 0.1 245);
+
+  /* Overlay / scrim for modals, drawers and captions over photography. */
+  --bv-overlay: oklch(0.24 0.015 55 / 0.55);
+
+  /* One consistent focus ring, distinct from brand primary (design.md §27). */
+  --bv-focus-ring: oklch(0.58 0.17 265);
+
+  /* Elevation — soft, diffuse, warm-tinted (design.md §9). */
+  --bv-shadow-raised: 0 1px 2px oklch(0.4 0.03 60 / 0.06),
+    0 2px 8px oklch(0.4 0.03 60 / 0.06);
+  --bv-shadow-floating: 0 2px 6px oklch(0.4 0.03 60 / 0.08),
+    0 8px 24px oklch(0.4 0.03 60 / 0.1);
+  --bv-shadow-modal: 0 8px 24px oklch(0.4 0.03 60 / 0.12),
+    0 24px 64px oklch(0.4 0.03 60 / 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bv-background: oklch(0.19 0.01 62);
+    --bv-surface: oklch(0.23 0.012 62);
+    --bv-surface-raised: oklch(0.26 0.013 62);
+    --bv-surface-sunken: oklch(0.16 0.009 62);
+    --bv-border: oklch(0.32 0.012 62);
+    --bv-border-strong: oklch(0.42 0.014 62);
+
+    --bv-foreground: oklch(0.95 0.008 75);
+    --bv-foreground-muted: oklch(0.74 0.012 70);
+
+    --bv-primary: oklch(0.72 0.135 52);
+    --bv-primary-hover: oklch(0.77 0.13 52);
+    --bv-primary-foreground: oklch(0.2 0.012 62);
+    --bv-accent: oklch(0.74 0.12 340);
+    --bv-accent-foreground: oklch(0.2 0.012 62);
+
+    --bv-success: oklch(0.7 0.12 150);
+    --bv-warning: oklch(0.8 0.12 78);
+    --bv-danger: oklch(0.67 0.16 27);
+    --bv-info: oklch(0.7 0.1 245);
+
+    --bv-overlay: oklch(0.12 0.008 62 / 0.68);
+    --bv-focus-ring: oklch(0.75 0.14 265);
+
+    /* Dark elevation leans on surface tone and border, not shadow (§5, §9). */
+    --bv-shadow-raised: 0 1px 2px oklch(0 0 0 / 0.4);
+    --bv-shadow-floating: 0 6px 20px oklch(0 0 0 / 0.45);
+    --bv-shadow-modal: 0 20px 56px oklch(0 0 0 / 0.55);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bv-background: oklch(0.19 0.01 62);
+  --bv-surface: oklch(0.23 0.012 62);
+  --bv-surface-raised: oklch(0.26 0.013 62);
+  --bv-surface-sunken: oklch(0.16 0.009 62);
+  --bv-border: oklch(0.32 0.012 62);
+  --bv-border-strong: oklch(0.42 0.014 62);
+
+  --bv-foreground: oklch(0.95 0.008 75);
+  --bv-foreground-muted: oklch(0.74 0.012 70);
+
+  --bv-primary: oklch(0.72 0.135 52);
+  --bv-primary-hover: oklch(0.77 0.13 52);
+  --bv-primary-foreground: oklch(0.2 0.012 62);
+  --bv-accent: oklch(0.74 0.12 340);
+  --bv-accent-foreground: oklch(0.2 0.012 62);
+
+  --bv-success: oklch(0.7 0.12 150);
+  --bv-warning: oklch(0.8 0.12 78);
+  --bv-danger: oklch(0.67 0.16 27);
+  --bv-info: oklch(0.7 0.1 245);
+
+  --bv-overlay: oklch(0.12 0.008 62 / 0.68);
+  --bv-focus-ring: oklch(0.75 0.14 265);
+
+  --bv-shadow-raised: 0 1px 2px oklch(0 0 0 / 0.4);
+  --bv-shadow-floating: 0 6px 20px oklch(0 0 0 / 0.45);
+  --bv-shadow-modal: 0 20px 56px oklch(0 0 0 / 0.55);
+}
+
+@theme inline {
+  --color-background: var(--bv-background);
+  --color-surface: var(--bv-surface);
+  --color-surface-raised: var(--bv-surface-raised);
+  --color-surface-sunken: var(--bv-surface-sunken);
+  --color-border: var(--bv-border);
+  --color-border-strong: var(--bv-border-strong);
+  --color-foreground: var(--bv-foreground);
+  --color-foreground-muted: var(--bv-foreground-muted);
+  --color-primary: var(--bv-primary);
+  --color-primary-hover: var(--bv-primary-hover);
+  --color-primary-foreground: var(--bv-primary-foreground);
+  --color-accent: var(--bv-accent);
+  --color-accent-foreground: var(--bv-accent-foreground);
+  --color-success: var(--bv-success);
+  --color-warning: var(--bv-warning);
+  --color-danger: var(--bv-danger);
+  --color-info: var(--bv-info);
+  --color-overlay: var(--bv-overlay);
+  --color-focus-ring: var(--bv-focus-ring);
+
+  /* Humanist system sans — warm and legible, no webfont download (design.md §6). */
+  --font-sans:
+    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Avenir Next", Avenir, "Nunito Sans", "Trebuchet MS", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
+    monospace;
+
+  /* A small, deliberate type scale (design.md §6). */
+  --text-display: 2.75rem;
+  --text-display--line-height: 1.08;
+  --text-display--letter-spacing: -0.02em;
+  --text-heading-lg: 2rem;
+  --text-heading-lg--line-height: 1.15;
+  --text-heading-lg--letter-spacing: -0.015em;
+  --text-heading-md: 1.5rem;
+  --text-heading-md--line-height: 1.25;
+  --text-heading-sm: 1.175rem;
+  --text-heading-sm--line-height: 1.35;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-body-sm: 0.9375rem;
+  --text-body-sm--line-height: 1.55;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.45;
+
+  /* Radius scale — soft and consistent (design.md §8). */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+
+  --shadow-raised: var(--bv-shadow-raised);
+  --shadow-floating: var(--bv-shadow-floating);
+  --shadow-modal: var(--bv-shadow-modal);
+}
+
+body {
+  background-color: var(--bv-background);
+  color: var(--bv-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * One consistent, clearly visible focus indicator, never suppressed, offset so
+ * it stays legible over photography (design.md §27).
+ */
+:focus-visible {
+  outline: 2px solid var(--bv-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * Reduced motion is honored everywhere, with zero exceptions (design.md §29).
+ * The shared wrappers in components/motion handle it in JS; this is the
+ * backstop for any CSS transition or animation.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

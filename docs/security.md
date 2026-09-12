@@ -171,7 +171,7 @@ Roles, highest capability first (*presentation order; the enum is declared ascen
 3. **Separate policies per command** — `SELECT`, `INSERT`, `UPDATE`, `DELETE` are distinct decisions and must not share one permissive policy.
 4. **Every write policy carries a write-side check**, not just a read filter. Without it a member of batch A can *insert* a row claiming `batch_id` of batch B: the read filter would hide it from them afterwards, but the row would exist inside someone else's archive.
 5. **Column-level control wherever row-level is not enough — which is everywhere direct DML survives.** RLS answers *which row*; it says nothing about *which fields*. Two read/immutability cases: `batch_invites.token_hash` must not be selectable by any client role (§9), and `reports.target_kind` / `reports.target_id` must not be updatable (database.md §3.9). Beyond those, **every remaining direct-DML path needs an explicit writable-column set** — `profiles`, `memories`, `comments`, `reactions` — specified in §5.4.1.
-6. **Tables with no legitimate direct-client use are not exposed to the API at all.** `audit_logs` is written by privileged functions and read through a narrow path; direct grants to client roles are revoked rather than merely policy-restricted.
+6. **Tables with no legitimate direct-client use are not exposed to the API at all.** `audit_logs` is written by privileged functions and read through a narrow path; direct grants to client roles are revoked rather than merely policy-restricted. **Revoke from the named roles (`anon`, `authenticated`, `service_role`), not from `PUBLIC`** — on hosted Supabase the grants come from `ALTER DEFAULT PRIVILEGES` and survive a `PUBLIC` revoke (§32, B2 finding (ii)).
 7. **Soft-deleted rows are invisible.** Every content policy requires `deleted_at IS NULL`, and every membership predicate additionally requires the *batch* not to be soft-deleted. Restoration is a privileged operation, not a normal read.
 8. **RLS is necessary but not sufficient for writes.** Some operations cannot be made safe by a row predicate alone, because their safety depends on values the client must not choose or on several rows changing together. Those writes are removed from the direct API surface entirely — see §5.2.
 
@@ -185,7 +185,9 @@ For some rows that is enough — a comment is a batch id, a memory id and some t
 - **Multi-row atomicity** (a batch and its owner membership; a demotion and a promotion).
 - **State the client must not be trusted to compute** (whether an invite is still valid; whether a join policy requires approval; what role a redemption yields).
 
-**Therefore: for MVP, client roles hold no direct `INSERT`/`UPDATE`/`DELETE` on the following operations.** The privilege is revoked at the grant level, so there is no policy to get wrong and nothing for a direct PostgREST call to attempt:
+**Therefore: for MVP, client roles hold no direct `INSERT`/`UPDATE`/`DELETE` on the following operations.** The privilege is revoked at the grant level, so there is no policy to get wrong and nothing for a direct PostgREST call to attempt.
+
+> **This is not the hosted default, and it will not happen by itself.** Verified on the real project (§32, B2 finding (ii)): `ALTER DEFAULT PRIVILEGES` grants `anon`, `authenticated` and `service_role` **full DML on every new table in `public`** and `EXECUTE` on every new function, and **`REVOKE … FROM PUBLIC` does not remove it** — those are explicit per-role grants. Every migration must therefore `REVOKE` from the **named client roles**, and a test must assert the resulting ACL. Skip it and the table below is aspirational: RLS becomes the only barrier where two were designed.
 
 | Operation | Why it cannot be direct DML |
 |---|---|
@@ -242,7 +244,8 @@ There is a consistency problem in the three statements above that has to be reso
 - Use a **pinned empty/safe `search_path`**.
 - Contain **no dynamic SQL**. None.
 - Be granted **`EXECUTE` to the minimum set of roles**, and nothing wider.
-- Have its **ownership and `BYPASSRLS` behaviour explicitly chosen and verified in the target Supabase environment** — the same requirement, for the same reason, as the membership helper in §5.3. `SECURITY DEFINER` interacts with `FORCE ROW LEVEL SECURITY`, and what a given owner can actually do must be proven rather than assumed.
+- Be written in the knowledge that **RLS will not filter anything it does.** Verified on the real project (§32, B2): the owning `postgres` role holds `BYPASSRLS`, which beats `FORCE ROW LEVEL SECURITY`, so a definer function reads and writes unfiltered. Removing such a function's own `auth.uid()` check was observed to let an unauthorized caller write. There is no second line of defence inside one — its checks are the boundary, in full.
+- **Have its `EXECUTE` grants revoked from the named client roles**, not merely from `PUBLIC` (§32, B2 finding (ii)): hosted default privileges grant `anon` and `authenticated` `EXECUTE` on every new `public` function, and a `PUBLIC` revoke leaves that intact — observed as `anon` successfully calling a function that had been revoked from `PUBLIC`.
 - Have **adversarial tests** (§5.6): a non-member calling it, a member calling it for another batch, a moderator attempting an admin-level action, a caller attempting to act on themselves where forbidden, and a caller passing a well-formed but unauthorized target.
 
 **The trust boundary, stated precisely.**
@@ -264,7 +267,11 @@ Nearly every policy reduces to one question: *is the caller an active member of 
 
 The usual mitigation is a **`SECURITY DEFINER`** helper. That is the right direction, but the earlier phrasing was too casual about it, and the detail matters:
 
-**`SECURITY DEFINER` is not a magic RLS bypass, and it interacts with `FORCE ROW LEVEL SECURITY`.** A definer function runs as its *owner*, so whether its internal lookup is subject to policies depends entirely on **who that owner is and what that role is permitted to do**. Ground rule 2 (§5.1) forces RLS even for the table owner, precisely so that owning a table is not an accidental exemption — which means "make it `SECURITY DEFINER`" does not by itself guarantee the helper can read `batch_members` unfiltered. The owner and execution model must be **chosen deliberately** against Supabase's actual role model, and the resulting behaviour **verified in the target environment before any policy depends on it**.
+**`SECURITY DEFINER` is not a magic RLS bypass in general — but on Supabase it does bypass, and that is now measured, not assumed.** A definer function runs as its *owner*, so whether its internal lookup is subject to policies depends entirely on **who that owner is and what that role is permitted to do**.
+
+**Verified on the real hosted project** (§32, B2 Block 2): Supabase's `postgres` — the role that owns migrated objects — is **not** a superuser but **does hold `BYPASSRLS`. `BYPASSRLS` beats `FORCE ROW LEVEL SECURITY`**, so a definer function owned by `postgres` reads and writes unfiltered, and ground rule 2 does not constrain it. The same probe with a deliberately non-`BYPASSRLS` owner saw 0 rows and was refused `42501`, which is what proves the exemption comes from the owner's attribute rather than from `SECURITY DEFINER` itself.
+
+The helper therefore works without any owner-admitting policy — and, by the same token, **nothing inside a definer function is protected by RLS**, which is why the constraints below are not optional.
 
 Because the helper is, by construction, a small piece of code that reads data its caller cannot, it is a **privilege-escalation surface** and is constrained accordingly:
 
@@ -275,7 +282,7 @@ Because the helper is, by construction, a small piece of code that reads data it
 - **No dynamic SQL.** None. A definer function building a statement from input is the classic escalation bug.
 - **`STABLE`** volatility, so it can be evaluated efficiently inside a query.
 - **Minimum `EXECUTE` grants** — only the roles that must call it.
-- **Verified, not assumed:** confirm the owner's `BYPASSRLS`/ownership behaviour in the deployed Supabase environment, and add a negative test proving the helper cannot be used to learn about batches the caller is not in.
+- **Verified, not assumed** — and now actually verified (§32, B2): the owner's `BYPASSRLS` behaviour was measured on the hosted project, the recursion trap was reproduced (`54001` with an invoker helper, clean with a definer helper), and the parameterised variant was observed leaking another user's membership. The negative test proving the helper cannot be used to learn about batches the caller is not in remains required in the suite.
 
 Getting this wrong is the single most likely way to ship a broken privacy boundary, which is why it is spelled out here rather than left to the policy-writing step.
 
@@ -1069,10 +1076,120 @@ Applied centrally (middleware / platform config) so a new route is protected by 
 **B1 — EXIF / GPS stripping has no MVP answer, and the current specification forbids one.**
 Stripping metadata requires modifying bytes, which collides with "originals preserved unmodified" and with the no-media-processing MVP stance (§27). Shipping as-specified means members silently broadcast their home coordinates to their batch, permanently. This is a privacy defect in a privacy-first product; one of the four options in §27 must be chosen deliberately.
 
-**B2 — The privileged database-function execution model must be settled and verified before any policy or RPC is written.**
-This covers two things that share one root cause. First, **RLS helper recursion**: the membership predicate is read by nearly every policy, including policies on `batch_members` itself, so without the constrained design in §5.3 policies either error or behave unpredictably. Second, **the RPC-only write path** (§5.2.2): client DML is revoked, so those writes require a function executing with privileges the caller lacks — and inside it, the function's own checks, not RLS, are what authorize the write.
+**B2 — The privileged database-function execution model. ✅ RESOLVED 2026-09-12** (verified on a real hosted Supabase project; details below).
+It covered two things sharing one root cause. First, **RLS helper recursion**: the membership predicate is read by nearly every policy, including policies on `batch_members` itself, so without the constrained design in §5.3 policies either error or behave unpredictably. Second, **the RPC-only write path** (§5.2.2): client DML is revoked, so those writes require a function executing with privileges the caller lacks.
 
-Both depend on the same unverified assumption: `SECURITY DEFINER` does **not** automatically bypass `FORCE ROW LEVEL SECURITY`, so ownership and execution role must be chosen deliberately and **the behaviour proven in the target Supabase environment** before anything depends on it. Both also create privilege-escalation surfaces if written carelessly. This is a prerequisite for the whole authorization design, not an implementation detail — and it means the privileged functions are trusted security code requiring adversarial tests of their own.
+Both hinged on one unverified assumption — whether `SECURITY DEFINER` bypasses `FORCE ROW LEVEL SECURITY` on Supabase. **It does**, because the owning `postgres` role holds `BYPASSRLS`. So inside a privileged function the function's own checks are not merely the primary boundary, they are the *only* one; and the recursion trap is real and is solved by a definer helper. The privileged functions are trusted security code and still require adversarial tests of their own.
+
+The verification also surfaced a Supabase behaviour neither candidate model predicted — default privileges granting client roles full access to new `public` objects — which is now a hard requirement on every migration rather than an open question. See finding (ii).
+
+#### B2 verification status — **RESOLVED against a real hosted Supabase project** (Phase 0, 2026-09-12)
+
+B2 is closed. The execution model was verified empirically on a real, hosted, **non-production** Supabase project (`BatchVault-Dev`, PostgreSQL 17.6, region `ap-southeast-1`), across **two independent transports**, using disposable probe objects that were dropped and whose removal was verified. No BatchVault product table was created.
+
+Read the two blocks below in order: the first is the earlier **reconstructed PostgreSQL** experiment, retained because most of it was confirmed; the second is the **real Supabase** verification, which supersedes it wherever they differ. Section §5.2.2 and §5.3 are written against the real findings.
+
+---
+
+##### Block 1 — earlier reconstructed PostgreSQL experiment (superseded where noted)
+
+**What was run.** `tests/db/b2-execution-model.test.ts` against **PostgreSQL 17.6** with Supabase's role model **rebuilt by the harness**, because Docker/WSL was unavailable and no hosted project was reachable at the time. Deliberately, the stand-in owner role was created **non-superuser and without `BYPASSRLS`** — which turned out to be the one assumption that does not match Supabase.
+
+**Observed, on PostgreSQL 17.6 (reconstructed owner role: non-superuser, no `BYPASSRLS`):**
+
+| # | Question | Observed result |
+|---|---|---|
+| 1 | Identity inside a privileged function | `auth.uid()` returns the **caller's** JWT `sub`, unchanged, while `current_user` becomes the **function owner**. Identity comes from the request's claims, not from the executing role. An anonymous caller resolves to `NULL` |
+| 2 | Owner vs. `FORCE ROW LEVEL SECURITY` | The owner is **fully subject** to its own tables' policies: a seeded table returned **0 rows**, and an `INSERT` into a forced table with no policy was refused (`42501`). A `BYPASSRLS` role (`service_role`) saw every row of the same table |
+| 3 | Which configuration permits the privileged write | **`SECURITY DEFINER` alone is not sufficient.** With FORCE RLS and a non-exempt owner the definer `INSERT` was refused (`42501`), and the definer *membership helper* returned `false` for a genuine member — so every policy built on it denied, silently. The write and the helper both worked only once a policy **explicitly admitting the owner role** existed. Two further specifics: the admission is needed on **every table the function touches**, including read-only entitlement sources, and `INSERT … RETURNING` additionally requires a **`SELECT`** admission, not just `INSERT` |
+| 4 | Must the function authorize `auth.uid()` itself | **Yes, and nothing else will.** The checked function admitted an entitled caller and refused both an unentitled caller and an unknown batch id with an identical message. The same function with its check removed **created a membership for an unauthorized caller** |
+| 5 | Can a caller forge actor identity or role by parameter | No. Passing another user's id as `claimed_actor` and `"owner"` as `claimed_role` stored the **caller's** id and `member` |
+| 6 | Do minimum `EXECUTE` grants bite | Yes. `anon` was refused (`42501`) on both the privileged RPC and the membership helper; `authenticated` succeeded |
+| 7 | Membership-helper recursion | A policy whose predicate is a **definer** helper reading the same table completed normally. The identical predicate as a **`SECURITY INVOKER`** helper failed the query outright (`54001`, stack depth exceeded — the same defect as `42P17`) |
+| 8 | Can the helper become an oracle | Not in the constrained shape. Taking no user-id parameter, it answered only about the caller, and returned `false` **indistinguishably** for "someone else's batch" and "no such batch". A cross-batch read returned 0 rows and a direct `INSERT` into the roster was refused (`42501`). The deliberately wrong variant taking a `who` parameter **did** disclose another user's membership — which is why §5.3 forbids the parameter |
+
+**The execution model this pointed to**, pending the Supabase run, was one of:
+
+- **(a) If Supabase's `postgres` holds `BYPASSRLS`/`SUPERUSER`** — a definer function owned by it performs its writes unfiltered, and `FORCE ROW LEVEL SECURITY` constrains nothing inside it. The function's own checks are then the *only* boundary, exactly as §5.2.2 states.
+- **(b) If it does not** — every privileged function needs an explicit policy admitting its owner role on each table it reads or writes, and that admission is itself security-relevant surface to review.
+
+**Model (a) is the real one.** See Block 2.
+
+---
+
+##### Block 2 — real hosted Supabase verification (authoritative)
+
+**Environment.** Hosted Supabase project `BatchVault-Dev`, `PostgreSQL 17.6 on aarch64-unknown-linux-gnu`, both Phase 0 migrations applied through the Supabase CLI. Probe objects were disposable (`b2_probe_hosted` schema; `public.b2p_*` objects; a `b2_probe_owner` role; one disposable Auth user), all removed, removal verified.
+
+**Two transports, deliberately.** Neither alone is sufficient evidence:
+
+1. **Direct SQL** — role attributes, DDL, `SET LOCAL ROLE` + `request.jwt.claims`, executed on the project's own Postgres.
+2. **Production PostgREST** — the real `/rest/v1/rpc/…` surface, called with a **real Supabase Auth JWT** minted by signing in as a disposable user, and separately with the anon key. This is the transport the product will actually use.
+
+Every finding below was reproduced identically on both where both could observe it.
+
+**Real Supabase role attributes** (the question that kept B2 open):
+
+| Role | `SUPERUSER` | `BYPASSRLS` | `LOGIN` |
+|---|:--:|:--:|:--:|
+| `postgres` *(owns migrated objects)* | **no** | **YES** | yes |
+| `supabase_admin` | yes | yes | yes |
+| `service_role` | no | **yes** | no |
+| `authenticator` *(PostgREST connects as this)* | no | no | yes |
+| `authenticated` | no | no | no |
+| `anon` | no | no | no |
+
+**Observed on real Supabase:**
+
+| # | Question | Observed result |
+|---|---|---|
+| 1 | Role attributes | `postgres` is **not** a superuser but **does hold `BYPASSRLS`**. `anon`/`authenticated`/`authenticator` hold neither attribute, so **no client role can ever bypass RLS** |
+| 2 | Identity inside `SECURITY DEFINER` | `auth.uid()` is **preserved as the JWT caller**. Over real PostgREST with a real JWT: `current_user=postgres`, `session_user=authenticator`, `auth_uid=<the signed-in user>`, `auth_role=authenticated`. **Confirms Block 1 #1** |
+| 3 | Identity inside `SECURITY INVOKER` | `current_user=authenticated`, `session_user=authenticator`, same `auth_uid`. So `current_user` is the only thing that changes between definer and invoker |
+| 4 | Anonymous caller inside a definer function | `current_user=postgres`, `auth_role=anon`, **`auth.uid()` is `NULL`**. A privileged function that omits a NULL check therefore runs for an unauthenticated caller with no identity to authorize — the NULL branch is mandatory, not defensive |
+| 5 | Does `SECURITY DEFINER` bypass `FORCE ROW LEVEL SECURITY`? | **YES, on Supabase.** A definer function owned by `postgres` read **2 of 2 rows** from a `FORCE ROW LEVEL SECURITY` table whose only policy admits one row; the invoker equivalent read **1**. Reproduced over direct SQL *and* over PostgREST. **This supersedes Block 1 #3** |
+| 6 | Why | Because the owner holds `BYPASSRLS`, not because of `SECURITY DEFINER` itself. Proven by isolating the variable: a disposable **non-`BYPASSRLS`** owner reading its own forced table with no policy saw **0 rows** and its `INSERT` was refused `42501` — i.e. Block 1's behaviour is real PostgreSQL behaviour, it just is not Supabase's, because Supabase's owner is exempt |
+| 7 | Do touched tables need owner-admitting policies? | **No** — on Supabase. `BYPASSRLS` beats `FORCE ROW LEVEL SECURITY` (confirmed directly: `postgres` read a forced, policy-less table it did not even own). Block 1's "admit the owner on every table" requirement **does not apply here**, and no such policy should be written |
+| 8 | Is the function's own authorization check load-bearing? | **Yes, and it is now the *entire* boundary.** The checked RPC allowed the entitled caller and returned an identical denial for an unentitled one; the same function **with its `auth.uid()` check removed wrote successfully for an unauthorized caller**. Because RLS is bypassed inside the function, there is no second line of defence at all |
+| 9 | Can a caller forge actor identity or role by parameter? | No. Passing another user's id as `claimed_actor` and `"owner"` as `claimed_role` returned `real_auth_uid` = the actual caller and `real_auth_role=authenticated`. Confirmed over real PostgREST |
+| 10 | Do minimum `EXECUTE` grants bite? | **Only if you revoke from the right grantee — see the default-privileges finding below.** In a *fresh* schema, `anon` was refused `42501`. In `public`, `anon` reached a function that had been `REVOKE`d from `PUBLIC` and granted only to `authenticated` |
+| 11 | Membership-helper recursion | **Confirmed.** A policy whose predicate is a `SECURITY INVOKER` helper reading the same table failed `54001` (stack depth exceeded). The identical predicate as a `SECURITY DEFINER` helper completed and returned the caller's own row only |
+| 12 | Can the helper become an oracle? | **Confirmed.** The no-parameter helper answered only about the caller. The variant taking a user-id parameter **disclosed another user's membership** (returned 1 for a different user) — which is exactly why §5.3 forbids the parameter |
+| 13 | End-to-end RLS through production PostgREST | A real authenticated JWT read **only its own row** from the forced table; the anon key read `[]`; an anon `INSERT` was refused with `42501 new row violates row-level security policy` and nothing persisted |
+
+**The Supabase-specific facts that differ from the reconstruction — read these before writing any migration:**
+
+**(i) `postgres` holds `BYPASSRLS`, so `SECURITY DEFINER` *does* bypass RLS.**
+§5.3's caution that "`SECURITY DEFINER` is not a magic RLS bypass" is correct as a statement about PostgreSQL, and it is why this had to be measured rather than assumed — but on Supabase the answer is that it **does** bypass, because of the owner's attribute. The practical consequences:
+
+- A privileged RPC's own checks are **the only** authorization boundary for its writes. §5.2.2 already says this; it is now empirically necessary rather than merely prudent.
+- Do **not** add policies admitting the owner role. They would be inert, and they would widen every policy they appear in.
+- A `SECURITY DEFINER` function is a hole through RLS by construction. Keep the set small, keep each one narrow, and review each as trusted security code.
+
+**(ii) `ALTER DEFAULT PRIVILEGES` silently grants client roles access to every new object in `public`.**
+This was not anticipated by either model and is the most operationally important finding. `pg_default_acl` on a hosted project carries 24 entries; for schema `public` (grantors `postgres` **and** `supabase_admin`) they grant:
+
+| New object in `public` | Automatically granted to `anon`, `authenticated`, `service_role` |
+|---|---|
+| table | `arwdDxtm` — **INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN** |
+| function | `X` — EXECUTE |
+| sequence | `rwU` |
+
+Observed consequences:
+
+- A probe table created in `public` with only `GRANT SELECT … TO authenticated` nevertheless showed `anon=arwdDxtm` in its ACL. The anon `INSERT` was stopped by **RLS alone** (`42501`), not by privileges.
+- **`REVOKE … FROM PUBLIC` does not remove these.** They are explicit per-role grants, so revoking `PUBLIC` leaves them intact — demonstrated by a function revoked from `PUBLIC` and granted only to `authenticated` that `anon` still executed successfully over PostgREST.
+- Phase 0's own `set_updated_at()` was affected: its original migration does `revoke all … from public`, yet its live ACL was `anon=X | authenticated=X | service_role=X`. Practical exposure was nil — it returns `trigger`, so PostgREST will not expose it as an RPC (`PGRST202`, HTTP 404) — but the migration's stated intent was not what the database held. **Fixed** by the forward migration `20260912150000_foundation_revoke_set_updated_at_execute.sql`, which revokes from `PUBLIC` **and** from each named role. Verified on the hosted project: the ACL is now `postgres=X/postgres`, an `authenticated` caller invoking the function directly is refused `42501`, and **trigger behaviour is unchanged** — an `authenticated` `UPDATE` on a trigger-bearing table still advanced `updated_at`, still ignored a forged `updated_at`, and left `created_at` alone. That is the expected result: PostgreSQL checks `EXECUTE` on a trigger function when the trigger is *created*, not when it fires.
+
+**Therefore, a hard requirement for every migration from Phase 1 onward:** privileges must be revoked from the **named client roles**, not from `PUBLIC`, and the resulting ACL must be asserted by a test rather than assumed. Concretely, `REVOKE … FROM anon, authenticated` (and `service_role` where it has no business there) for every table, function and sequence created in `public`, or a project-level change to the default privileges themselves. Without this, §5.2's control — "client roles hold no direct `INSERT`/`UPDATE`/`DELETE`, revoked at the grant level, so there is no policy to get wrong" — **is not the hosted default**, and RLS silently becomes the only barrier where the design called for two.
+
+**(iii) `session_user` is `authenticator`, not the client role.** Over PostgREST, `session_user=authenticator` in both definer and invoker functions; only `current_user` distinguishes them. Any check that reads `session_user` to infer the caller's role is therefore wrong. Authorization derives from `auth.uid()` / `auth.role()`, never from `session_user`.
+
+**(iv) Client roles can never bypass RLS.** `anon`, `authenticated` and `authenticator` hold neither `SUPERUSER` nor `BYPASSRLS`. RLS is a real boundary for every client-reachable path.
+
+**The committed suite has now also run against the hosted project.** `pnpm test:db` executed against the linked project with a direct `DATABASE_URL`: **26 tests, 26 passed, 0 skipped, 3 files**, with the harness reporting `kind: "supabase"`, `ownerRole: "postgres"`, `PostgreSQL 17.6 on aarch64-unknown-linux-gnu` — so the `kind: "supabase"` path in `tests/db/support/environment.ts` is no longer theoretical.
+
+Two things are worth recording about that run. It **independently reproduces finding (i)**: the suite's `ownerIsRlsExempt()` branch took the *exempt* path and asserted that the owner's read and write both succeed under `FORCE ROW LEVEL SECURITY`, which is only true because `postgres` holds `BYPASSRLS`. And its requirement-3 test titles still say "non-exempt owner", which is accurate for the reconstructed environment the suite was written against but reads oddly on Supabase; the assertions themselves branch correctly, so this is a naming artefact rather than a wrong test.
 
 **B3 — Owner account deletion can strand a batch (database.md Q3).**
 Postgres enforces at most one owner but cannot enforce at least one. A batch that reaches zero owners cannot transfer ownership or be deleted, and if admins also depart it becomes unmoderatable — a security problem, not merely an operational one. Choose: block deletion pending transfer, auto-promote, or allow a claimable ownerless state.
