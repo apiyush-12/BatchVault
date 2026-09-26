@@ -8,9 +8,13 @@ only; `onboarding_completed_at` and `avatar_path` change through the controlled
 write paths in security.md §5.4.3 (`complete_onboarding()`,
 `set_own_avatar_path()`), never by ordinary DML.
 
-- `queries.ts` — `getOwnProfile()`, `getOwnAvatarUrl()`. Own row/object only
-  in this phase — the shared-batch clause depends on `batch_members`, which
-  does not exist until Phase 2 (phases.md Phase 1 "Explicitly NOT in scope").
+- `queries.ts` — `getOwnProfile()`, `getOwnAvatarUrl()`, and (since **Phase 2**)
+  `getProfilesByIds()` / `getAvatarUrl()` — the exported reads other domains
+  (currently `features/memberships`' roster view) use to resolve co-members'
+  display info, instead of querying `profiles` directly (architecture §17).
+  RLS decides what actually comes back: own row always, plus (since Phase 2)
+  any profile sharing an active batch with the caller (security.md §5.4,
+  §6.1).
 - `actions.ts` — `saveOwnProfileAction` (create-or-update own row) is
   deliberately separate from `markOnboardingCompleteAction` (the controlled
   RPC call): the avatar controlled-write path requires the profile row to
@@ -23,5 +27,6 @@ write paths in security.md §5.4.3 (`complete_onboarding()`,
   the controlled write path records it — architecture §7–8; security.md
   §6.1).
 
-Avatar Storage policy is self-only at this phase (`storage.foldername`-scoped
-to `auth.uid()`), per phases.md Phase 1.
+Avatar Storage policy was self-only in Phase 1; **Phase 2** additively extends
+read access to co-members of an active shared batch (security.md §6.1) — the
+original self-only policies are unchanged, and Postgres OR-combines the two.

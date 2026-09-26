@@ -1243,7 +1243,7 @@ Post-MVP, designed but **not created**: `albums`, `album_memories`, `memory_peop
 
 ### Unresolved schema questions
 
-**Q1 — Default `join_policy`.** Schema defaults to `invite_only_requires_approval` (the safer choice). PRD unresolved #1/#2 must confirm, and decide whether the policy is owner-configurable at all or fixed product-wide.
+**Q1 — Default `join_policy`. ✅ RESOLVED** (Phase 2 / Prompt 14; PRD.md unresolved #1–2). The schema default `invite_only_requires_approval` is confirmed as the product default, and the policy **is** owner/admin-configurable per batch via batch settings — not fixed product-wide.
 
 **Q2 — Reaction `kind` allowlist.** The uniqueness rule is settled; the permitted values are not (PRD unresolved #3). Held as CHECK-constrained `text` so the set can move in both directions.
 

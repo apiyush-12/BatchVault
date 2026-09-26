@@ -1,19 +1,18 @@
 # lib/authz
 
-Capability and role-hierarchy boundary (architecture §16–17) — **skeleton
-only; no logic in Phase 0.**
+Capability and role-hierarchy boundary (architecture §16–17). Implemented in
+Phase 2, once `batch_members` exists.
 
-When roles exist, this is the **single place the role hierarchy is expressed in
-application code**, mirroring the SQL helper functions so the same comparison
-is never re-implemented per feature. Owner > Admin > Moderator > Member.
+`roles.ts` is the **single place the role hierarchy is expressed in
+application code**, mirroring `public.batch_role`'s declaration order
+(database.md §15) so the same comparison is never re-implemented per feature.
+Owner > Admin > Moderator > Member.
 
-Two things this module will never be:
+Two things this module is never:
 
 - a substitute for the database boundary — it is Layer 2 defense in depth,
-  while RLS, Storage RLS and a privileged function's own checks are the
-  guarantee (architecture §5; security.md §3);
-- a place that trusts a caller-supplied role. The actor's role is resolved
-  from `batch_members`, never accepted from input (security.md §11).
-
-`batch_members` does not exist until Phase 2, so there is deliberately nothing
-to implement here yet.
+  while RLS and each privileged RPC's own checks are the guarantee
+  (architecture §5; security.md §3, §5.2.2);
+- a place that trusts a caller-supplied role. The actor's role always comes
+  from `batch_members` (via `public.my_batch_role()` server-side), never
+  accepted from input (security.md §11).

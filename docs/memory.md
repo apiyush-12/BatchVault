@@ -14,6 +14,8 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
+**Phase 2 — Batch Spaces: COMPLETE** (2026-09-26). See "Phase 2 — Batch Spaces (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+
 **Correction (2026-09-26 session):** the note below saying Phase 0 was "pending only its git checkpoint" was itself committed in `c8ae566 chore: complete phase 0 foundation` — i.e. the file said "not yet committed" inside the commit that committed it. **Phase 0 is in fact COMPLETE**: the commit exists, `git log` confirms it, and every gate recorded below as passing was passing at that commit. This paragraph corrects that stale self-reference; nothing about Phase 0's substance changes.
 
 **Phase 1 — Authentication & Profile: COMPLETE** (2026-09-26, resumed and finished in the same session that found it blocked — the hosted dev project came back healthy). See "Phase 1 — Authentication & Profile (complete)" below for full detail.
@@ -103,6 +105,73 @@ A second, smaller fix from the same gate: the artifact scanner's own heuristic f
 ### memory.md update
 
 Phase 1 complete; `profiles` shipped with its writable-column set (`display_name`, `bio`); co-member avatar visibility deferred to Phase 2, per phases.md's own instruction for this update.
+
+## Phase 2 — Batch Spaces (complete)
+
+**Status: COMPLETE.** Implemented per Prompt 14 (`14_PHASE_2_BATCHES_MEMBERSHIP.md`) and `phases.md` Phase 2. B2 was already CLOSED (Phase 0) and was re-confirmed, not re-investigated: `pnpm test:db` exercises `b2-execution-model.test.ts` on every run and it passed as part of this session's 88/88.
+
+**Decision recorded first, per phases.md's own prerequisite** — Q1 / PRD unresolved #1–2 (the `join_policy` default this phase encodes): resolved as **`invite_only_requires_approval`** default, **owner/admin-configurable** per batch. Updated in `docs/PRD.md` (unresolved #1–2, now resolved) and `docs/database.md` (Q1, now resolved) before any migration was written.
+
+### What was implemented
+
+**Database — three migrations applied to the hosted dev project via `supabase db push --linked` (Docker was not needed this time — unlike Phase 1's session, `db push` worked directly) and verified by 88 passing adversarial tests:**
+
+- `20260926130000_phase2_batches_and_members.sql` — `batch_role`/`membership_status`/`batch_visibility`/`join_policy` enums; `batches` and `batch_members` tables (RLS enabled+forced in the same migration); the partial unique index enforcing at most one active owner; the `my_batch_role(p_batch_id uuid) returns batch_role` membership-predicate helper (`SECURITY DEFINER`, `STABLE`, pinned empty `search_path`, current-caller-only, `EXECUTE` granted to `authenticated` only); SELECT-only policies for both tables (RPC-only for every write — no INSERT/UPDATE/DELETE grant to any client role at all, per the B5 standing rule).
+- `20260926130100_phase2_audit_log_and_batch_rpcs.sql` — `audit_action`/`audit_target_kind` enums; `audit_logs` table (RLS enabled+forced, **zero client-role grants at all** — not even SELECT; reading it is explicitly Phase 8A scope, not built here); `create_batch(...)` (atomic batch + owner-membership creation, security.md §5.2.1 — no audit row, since creation is not a "settings change"); `update_batch_settings(...)` (admin+ only, resolved via `my_batch_role`, writes exactly one audit row with before/after JSON in the same transaction). Both `SECURITY DEFINER`, `EXECUTE` granted to `authenticated` only.
+- `20260926130200_phase2_shared_batch_profile_visibility.sql` — two **additive** SELECT policies (Postgres OR-combines multiple permissive policies): `profiles_select_shared_batch` and `avatars_select_shared_batch` on `storage.objects`, both keyed off `my_batch_role()`. Phase 1's self-only policies are untouched.
+- **Deliberately deferred**, per database.md's own design and matching precedent (`profiles.avatar_path`-style incremental columns): `batches.cover_media_asset_id` (needs `media_assets`, Phase 4A) and `batch_members.invite_id` + its composite FK to `batch_invites` (needs that table, Phase 3A). Every other column/constraint database.md specifies for these two tables exists now.
+- `types/database.ts` regenerated via `supabase gen types typescript --linked`.
+
+**Backend:**
+
+- `lib/authz/roles.ts` — the `BatchRole` type and `hasAtLeastRole()`, mirroring `batch_role`'s declared ascending order exactly (member < moderator < admin < owner). Layer 2 only, never trusted as the boundary.
+- `features/batches/` — `schema.ts`, `types.ts`, `queries.ts` (`listMyBatches()` — the switcher's data source; `getBatchById()`), `actions.ts` (`createBatchAction` → `create_batch` RPC, redirects into the new batch; `updateBatchSettingsAction` → `update_batch_settings` RPC), `permissions.ts` (`canEditBatchSettings`), `components/` (`CreateBatchForm`, `BatchSettingsForm`).
+- `features/memberships/` — `types.ts`, `queries.ts` (`listBatchMembers()` — RLS decides full-roster-vs-own-row-only; `getMyMembership()`), `permissions.ts` (`canManageMembers`, unused until Phase 3B). No `actions.ts` yet — owner bootstrap happens inside `create_batch`, not a separate memberships write.
+- `features/profiles/queries.ts` extended — added `getProfilesByIds()` and `getAvatarUrl()` (generalized from the existing `getOwnAvatarUrl()`), the exported reads `features/memberships` uses to resolve co-members' display info, so no other module queries `profiles` directly (architecture §17).
+- `components/ui/select.tsx` — a plain vendored `<select>` for the join-policy field. `components/ui/not-available.tsx` — the one shared "can't show this" state (design.md §20; security.md §3), used identically for "batch doesn't exist" and "not authorized."
+
+**Frontend:**
+
+- `/home` — now the batch switcher (PRD §16; design.md §15): empty state with a "Create your batch" CTA, or a list of the caller's batches with role shown, plus "create another batch."
+- `/batches/new` — creation form (name, institution, course, department, graduation year, section, description, join policy).
+- `/batches/[batchId]` — batch home: identity, a static "🔒 Private" badge (visibility has exactly one legal value — never exposed as an editable field), links to Members and (admin+ only) Settings.
+- `/batches/[batchId]/members` — roster ("member list basics"): avatar-or-initial, display name, role. Uses the real co-member avatar Storage policy, not a placeholder.
+- `/batches/[batchId]/settings` — admin+-only settings form (page-level guard is Layer 2 convenience; `update_batch_settings` enforces the same ceiling database-side regardless).
+- Audit-log **viewing** UI is explicitly **not** built — `phases.md` Phase 8A owns "Audit-log view for admin+ of that batch only." Phase 2 writes the audit row; nothing reads it yet, by design.
+
+### Tests written and gates actually executed (all against the real hosted `BatchVault-Dev` project)
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | **PASS** |
+| Typecheck | `pnpm typecheck` | **PASS** |
+| Unit tests | `pnpm test:unit` | **PASS** — 23 tests |
+| Adversarial DB suite | `pnpm test:db` | **PASS** — 88 tests, 6 files (`batches.test.ts` new: 38 tests; plus Phase 0/1's five files, two of which needed real fixes for what Phase 2 legitimately creates — see below) |
+| Production build | `pnpm build` | **PASS** |
+| Client artifact scan | `pnpm test:artifacts` | **PASS** — 3 tests, re-run with the real service-role key visible, on a fresh post-Phase-2 build |
+| Dependency audit | `pnpm audit --prod --audit-level high` | **PASS** — no known vulnerabilities |
+| Playwright E2E | `pnpm test:e2e` | **PASS** — 34 passed, 2 explicitly-named skips (the same pre-existing, quota-guarded "check-your-email" skip from Phase 1 — unrelated to this phase). New: `batch-creation-flow.spec.ts` (create → land as owner → roster → settings save), on both projects |
+
+**New test files:** `tests/db/batches.test.ts` (anon/non-member denial on `batches`/`batch_members`; **the single most important negative test** — a caller cannot insert their own `batch_members` row by supplying a batch id; every write on both tables refused as RPC-only; roster visibility — active member sees the full roster including a seeded pending row, the pending requester sees only their own row and cannot see the batch itself at all; cross-batch isolation, including a user active in two batches seeing exactly those two; `my_batch_role` returning the real role, returning identical NULL for a stranger regardless of whether the batch is real or fabricated (oracle test), and refusing anon; `create_batch` atomicity — batch + owner row together, and no audit row for plain creation; `update_batch_settings` — admin+ succeeds, member/non-member/wrong-batch-owner/anon all refused identically, and exactly one audit row with before/after JSON on success; `audit_logs` — zero client access of any kind, to anyone, for any operation; the new shared-batch `profiles` policy — co-member visible, non-member and pending-member not; the new shared-batch avatar Storage policy, proven over real HTTP). `tests/e2e/batch-creation-flow.spec.ts`.
+
+**Real defects the gates caught and this session fixed, not worked around:**
+
+1. **Two stale phase-boundary test assertions**, the same category Phase 1 hit: `foundation-migrations.test.ts` asserted `batches`/`batch_members`/`audit_logs` must not exist; `storage-buckets.test.ts` asserted exactly the four Phase-1 avatar policy names with nothing else. Both updated for what Phase 2 legitimately creates (not weakened).
+2. **A missing `profiles` fixture row.** `batches.created_by` carries a real FK to `profiles`; disposable Auth users have no profile row by default (mirrors exactly the reason Phase 1 needed its own profile-row fixture). Fixed by seeding one per test user, sequentially.
+3. **A `pg.Client` concurrency bug in the test's own fixture setup** (`Promise.all` issuing concurrent queries on one non-pooled connection — `pg` deprecation-warns and does not guarantee correctness here). Fixed by seeding sequentially; caught before it could produce a flaky, order-dependent failure.
+4. **Two wrong test expectations, not implementation bugs**: two "anon reads return empty rows" assertions were corrected to "anon reads are refused at the privilege level" (`42501`) — matching the actual, *more* restrictive design (`batches`/`batch_members` grant `SELECT` to `authenticated` only, not `anon` at all), and matching `profiles.test.ts`'s identical precedent.
+5. **A Zod/react-hook-form typing trap**, caught by `tsc`, not by a test: `.transform()` and `.default()` on a schema field make its resolver-inferred INPUT type diverge from its OUTPUT type, which breaks `zodResolver`'s type against `useForm<z.infer<...>>`. Fixed by keeping `graduationYear` a plain string end-to-end in the form schema (converted to a number once, in `actions.ts`, right before the RPC call) and moving `joinPolicy`'s default into `useForm`'s `defaultValues` instead of the schema.
+6. **A generated-type gap for RPC arguments**, also caught by `tsc`: `update_batch_settings`'s SQL parameters have no `default`, so `supabase gen types` marks every argument required and non-null — even though the underlying columns are genuinely nullable and the function legitimately needs to clear one back to `NULL`. This is a real, narrow generator limitation (it does not do this for table columns, which correctly show `| null`), not a runtime restriction. Resolved with one documented, narrow type assertion at the single call site (rules.md §3's tolerated exception) rather than working around it by sending empty strings instead of `NULL`.
+
+**Known, accepted, honestly documented:**
+
+- The two batch-creation E2E tests each create one real batch on the hosted dev project via the UI (not raw SQL). `deleteUser()` in `afterAll` deletes the Auth user, which cascades the `batch_members` row (`profile_id` is `ON DELETE CASCADE`) but **not** the `batches` row itself (`created_by` is `ON DELETE SET NULL`, by design — database.md §12, so one departing member can never tear a hole in a shared batch's history). Net effect: each E2E run leaves one orphaned (`created_by = NULL`) test batch on the hosted dev project. Harmless on a non-production dev project and not a residue-hygiene violation of the kind B2's disposable-probe rules govern (those were about probe *schema objects*, not applicat­ion data a real E2E flow legitimately creates) — but worth knowing before assuming the dev project's `batches` table is empty. No batch-deletion capability exists yet to clean these up (that's Phase 8B).
+- `visibility` (`batch_visibility`) is not exposed as a setting anywhere in the UI or either RPC's parameter list — there is exactly one legal value today (ADR-12), so nothing to choose. Shown as a static "🔒 Private" badge instead.
+- Audit-log **read** access (RPC or UI) is not built — correctly deferred to Phase 8A per `phases.md`'s own scope split, even though the *write* path (inside `update_batch_settings`) exists now and is tested.
+
+### memory.md update
+
+Phase 2 complete; `batches`/`batch_members`/`audit_logs` shipped; Q1 resolved; the membership-predicate helper's verified execution model (unchanged from B2 — `SECURITY DEFINER` owned by the `BYPASSRLS`-holding `postgres` bypasses RLS entirely, so the helper's and both RPCs' own checks are the only boundary) is exercised, not re-investigated, by this phase's own RPCs and tests.
 
 ## Completed
 
@@ -231,7 +300,7 @@ Final SQL function names and signatures are an implementation decision — not f
 
 ## Database Summary
 
-MVP tables: `profiles` (**implemented, Phase 1**). Planned, not yet implemented: `batches`, `batch_members`, `batch_invites`, `memories`, `media_assets`, `comments`, `reactions`, `reports`, `audit_logs`.
+MVP tables: `profiles` (**implemented, Phase 1**), `batches`, `batch_members`, `audit_logs` (**implemented, Phase 2** — `batches.cover_media_asset_id` and `batch_members.invite_id` deliberately deferred to the phases that create their FK targets). Planned, not yet implemented: `batch_invites`, `memories`, `media_assets`, `comments`, `reactions`, `reports`.
 
 Key schema ideas to remember:
 
@@ -258,7 +327,7 @@ Per `phases.md`:
 
 - Phase 0 — Foundation — **COMPLETE**
 - Phase 1 — Authentication & Profile — **COMPLETE** (see above)
-- Phase 2 — Batch Spaces
+- Phase 2 — Batch Spaces — **COMPLETE** (see above)
 - Phase 3A — Invitations & Join
 - Phase 3B — Membership Decisions & Roles
 - Phase 4A — Photo Upload Pipeline
@@ -271,7 +340,7 @@ Per `phases.md`:
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: Phase 1, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1's migrations are applied to the hosted dev project, every required gate has been executed and observed passing (lint, typecheck, unit, the 50-test adversarial DB suite, build, artifact scan, audit, Playwright E2E), and `docs/memory.md` is updated per phases.md's own instruction. See "Phase 1 — Authentication & Profile (complete)" above for full detail. **Nothing has been committed** — that remains the next step, followed by Phase 2 only on explicit instruction.
+**Current implementation phase: Phase 2, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2's migrations are applied to the hosted dev project, every required gate has been executed and observed passing (lint, typecheck, unit, the 88-test adversarial DB suite, build, artifact scan, audit, Playwright E2E), and `docs/memory.md` is updated per phases.md's own instruction. See "Phase 2 — Batch Spaces (complete)" above for full detail. **Nothing has been committed for Phase 2** — this session was told not to commit. Phase 3A begins only on explicit instruction.
 
 ## Post-MVP Boundaries
 
@@ -360,11 +429,11 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Commit Phase 1**, then **Phase 2 / Prompt 14 — Batch Spaces** only on explicit instruction.
+**Commit Phase 2**, then **Phase 3A / Prompt 15 — Invitations & Join** only on explicit instruction.
 
-Phase 1 is complete (see "Phase 1 — Authentication & Profile (complete)" above): migrations applied to the hosted dev project, every required gate executed and observed passing, `docs/memory.md` updated. Nothing has been committed yet — this session was told not to commit.
+Phase 2 is complete (see "Phase 2 — Batch Spaces (complete)" above): migrations applied to the hosted dev project, every required gate executed and observed passing, `docs/memory.md` updated. Nothing has been committed for Phase 2 yet — this session was told not to commit.
 
-**Before Phase 2 begins, re-confirm B2** against the hosted project (Phase 2's own hard prerequisite, per `phases.md`: "Phase 2 begins only ... with B2 signed off"). B2 was closed 2026-09-12 against this same project; Phase 1 did not re-run the B2 suite itself, only the Phase 1-specific adversarial tests, so a quick re-confirmation (`pnpm test:db` already exercises the B2 file every run — it passed as part of this session's 50/50) is sufficient rather than a fresh full B2 investigation.
+Phase 3A's own hard prerequisite per `phases.md` is Phase 2 complete plus Q1/PRD #1–2 decided — both already true (this phase resolved Q1). No further re-confirmation is needed before Phase 3A beyond the standard `pnpm test:db` run, which continues to exercise the B2 suite every time.
 
 **Foundation configuration fact, corrected by measurement.** `supabase/config.toml` sets `auto_expose_new_tables = false`, which applies to the **local CLI stack only**. The hosted project does **not** behave that way: `ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated`/`service_role` full DML on new `public` tables and `EXECUTE` on new functions (B5). The earlier note that "each cloud project must be configured to match" was right to flag this — it is now confirmed that the cloud project does **not** match, and the required action is an explicit `REVOKE` in every migration (not a `PUBLIC` revoke, which does nothing here).
 
@@ -398,4 +467,4 @@ Every future session must:
 
 ---
 
-STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (2026-09-26): `profiles` and its two controlled write paths are live on the hosted `BatchVault-Dev` project; `features/authentication` and `features/profiles` are fully implemented; every required gate (lint, typecheck, unit — 23, adversarial DB — 50, build, artifact scan, audit, Playwright E2E — 30 passed/2 explicitly-named-skip) was executed against the real project and observed passing; `docs/memory.md` is updated. **Nothing has been committed** — this session was told not to commit. **Next Task: commit Phase 1, then Phase 2 / Prompt 14 — Batch Spaces only on explicit instruction**, with B2 re-confirmed first (see "Next Task" above).
+STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented; every required gate (lint, typecheck, unit — 23, adversarial DB — 88, build, artifact scan, audit, Playwright E2E — 34 passed/2 explicitly-named-skip) was executed against the real project and observed passing; `docs/memory.md` is updated. **Nothing has been committed for Phase 2** — this session was told not to commit. **Next Task: commit Phase 2, then Phase 3A / Prompt 15 — Invitations & Join only on explicit instruction** (see "Next Task" above).

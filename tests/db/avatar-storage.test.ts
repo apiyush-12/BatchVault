@@ -13,8 +13,13 @@ import { supabaseAnonKey, supabaseApiUrl } from "./support/db";
 /**
  * Avatar Storage authorization, called directly against the Storage REST API
  * by path with real bearer tokens (testing.md §3.6; security.md §6.1) — not
- * through the app. Phase 1 has no shared-batch clause yet, so avatar
- * visibility here is strictly self-only (phases.md Phase 1).
+ * through the app.
+ *
+ * `owner` and `other` here share no batch, so the negative case below is
+ * still correctly refused since Phase 2 (the shared-batch clause admits
+ * co-members, not strangers) — the reason changed, the result didn't. The
+ * *positive* co-member case (two users who do share an active batch) is
+ * covered in `tests/db/batches.test.ts`, where batch fixtures already exist.
  */
 
 let owner: TestUser;
@@ -62,7 +67,7 @@ describe("avatar Storage authorization (HTTP, direct)", () => {
     expect(response.status).toBe(200);
   });
 
-  it("refuses another authenticated user — Phase 1 has no shared-batch clause yet", async () => {
+  it("refuses another authenticated user who shares no batch with the owner", async () => {
     const response = await getObject(otherToken);
     expect(response.status).not.toBe(200);
   });

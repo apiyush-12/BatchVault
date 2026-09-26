@@ -54,7 +54,7 @@ describe("foundation Storage buckets", () => {
     expect(rows.map((row) => row.id)).toEqual([]);
   });
 
-  it("adds only the Phase 1 avatar policies, and nothing for batch-media", async () => {
+  it("adds only the Phase 1+2 avatar policies, and nothing for batch-media", async () => {
     const { rows } = await client.query<{ policyname: string; qual: string | null }>(
       `select policyname, qual::text as qual from pg_policies
         where schemaname = 'storage' and tablename = 'objects'`,
@@ -63,11 +63,15 @@ describe("foundation Storage buckets", () => {
 
     // Deny-by-default remains correct for batch-media: those policies arrive
     // with the flow they protect in Phase 4A, not before.
+    // `avatars_select_shared_batch` is Phase 2's additive co-member read
+    // policy (security.md §6.1) — it OR-combines with `avatars_select_own`,
+    // which is unchanged.
     expect(names).toEqual(
       [
         "avatars_delete_own",
         "avatars_insert_own",
         "avatars_select_own",
+        "avatars_select_shared_batch",
         "avatars_update_own",
       ].sort(),
     );

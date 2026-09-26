@@ -176,6 +176,31 @@ export async function asPersona<T>(
   }
 }
 
+/**
+ * Like `asPersona`, but COMMITS instead of rolling back. Reserved for the
+ * rare test that must inspect state a *different* connection/role sees
+ * afterward — notably an audit-log row written by a privileged RPC, which
+ * `audit_logs` grants no client role permission to read even inside the same
+ * transaction (database.md §3.10; security.md §5.4). Every caller of this
+ * function owns cleaning up whatever it commits.
+ */
+export async function asPersonaCommitted<T>(
+  client: Client,
+  persona: Persona,
+  work: (tx: Client) => Promise<T>,
+): Promise<T> {
+  await client.query("begin");
+  const claims =
+    persona.userId === undefined
+      ? JSON.stringify({ role: persona.role })
+      : JSON.stringify({ sub: persona.userId, role: persona.role });
+  await client.query("select set_config('request.jwt.claims', $1, true)", [claims]);
+  await client.query(`set local role ${persona.role}`);
+  const result = await work(client);
+  await client.query("commit");
+  return result;
+}
+
 /** Runs a statement as a persona and reports success or the database's error. */
 export async function attempt<T extends Record<string, unknown>>(
   client: Client,

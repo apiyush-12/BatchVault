@@ -33,9 +33,6 @@ function mapRow(row: ProfileRow): Profile {
  * The signed-in caller's own profile row, or `null` if none exists yet (a
  * new signup that has not completed onboarding) or no session exists
  * (architecture §6: query construction confined to this file).
- *
- * Reads own row only — the shared-batch clause is Phase 2 (phases.md Phase
- * 1, "Explicitly NOT in scope").
  */
 export async function getOwnProfile(): Promise<Profile | null> {
   const supabase = await createSupabaseServerClient();
@@ -56,25 +53,58 @@ export async function getOwnProfile(): Promise<Profile | null> {
 }
 
 /**
- * A short-lived signed URL for the caller's own avatar, or `null` if none is
- * set. The exact TTL is a Phase 1 delivery-convenience choice, independent of
- * R1 (which is specifically about batch-media TTL, still open).
+ * Profiles by id — the caller's own row always, and (since Phase 2) any
+ * profile sharing an active batch with the caller (security.md §5.4, §6.1).
+ * RLS decides which of `ids` actually come back; a non-shared profile is
+ * simply absent from the result, not an error.
+ *
+ * The domain this belongs to (`profiles`) owns this read so other modules —
+ * `memberships`' roster view, currently — never query the `profiles` table
+ * directly (architecture §17, rules.md §4).
  */
-const OWN_AVATAR_URL_TTL_SECONDS = 60;
+export async function getProfilesByIds(ids: string[]): Promise<Profile[]> {
+  if (ids.length === 0) {
+    return [];
+  }
 
-export async function getOwnAvatarUrl(): Promise<string | null> {
   const supabase = await createSupabaseServerClient();
-  const profile = await getOwnProfile();
-  if (profile === null || profile.avatarPath === null) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(OWN_PROFILE_COLUMNS)
+    .in("id", ids);
+
+  if (error !== null) {
+    throw error;
+  }
+  return (data ?? []).map(mapRow);
+}
+
+/**
+ * A short-lived signed URL for the given avatar path, or `null` if the path
+ * is absent or the caller cannot read that object (security.md §6.1, §8).
+ * The exact TTL is a Phase 1 delivery-convenience choice, independent of R1
+ * (which is specifically about batch-media TTL, still open).
+ */
+const AVATAR_URL_TTL_SECONDS = 60;
+
+export async function getAvatarUrl(avatarPath: string | null): Promise<string | null> {
+  if (avatarPath === null) {
     return null;
   }
 
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.storage
     .from("avatars")
-    .createSignedUrl(profile.avatarPath, OWN_AVATAR_URL_TTL_SECONDS);
+    .createSignedUrl(avatarPath, AVATAR_URL_TTL_SECONDS);
 
   if (error !== null) {
     return null;
   }
   return data.signedUrl;
+}
+
+/** The caller's own avatar, specifically. */
+export async function getOwnAvatarUrl(): Promise<string | null> {
+  const profile = await getOwnProfile();
+  return profile === null ? null : getAvatarUrl(profile.avatarPath);
 }

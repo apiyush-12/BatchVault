@@ -7,11 +7,222 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: Database["public"]["Enums"]["audit_action"]
+          actor_profile_id: string | null
+          actor_role: Database["public"]["Enums"]["batch_role"] | null
+          batch_id: string | null
+          detail: Json | null
+          id: number
+          occurred_at: string
+          target_id: string | null
+          target_kind: Database["public"]["Enums"]["audit_target_kind"] | null
+        }
+        Insert: {
+          action: Database["public"]["Enums"]["audit_action"]
+          actor_profile_id?: string | null
+          actor_role?: Database["public"]["Enums"]["batch_role"] | null
+          batch_id?: string | null
+          detail?: Json | null
+          id?: never
+          occurred_at?: string
+          target_id?: string | null
+          target_kind?: Database["public"]["Enums"]["audit_target_kind"] | null
+        }
+        Update: {
+          action?: Database["public"]["Enums"]["audit_action"]
+          actor_profile_id?: string | null
+          actor_role?: Database["public"]["Enums"]["batch_role"] | null
+          batch_id?: string | null
+          detail?: Json | null
+          id?: never
+          occurred_at?: string
+          target_id?: string | null
+          target_kind?: Database["public"]["Enums"]["audit_target_kind"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      batch_members: {
+        Row: {
+          batch_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          invited_by: string | null
+          joined_at: string | null
+          profile_id: string
+          requested_at: string
+          role: Database["public"]["Enums"]["batch_role"]
+          status: Database["public"]["Enums"]["membership_status"]
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          invited_by?: string | null
+          joined_at?: string | null
+          profile_id: string
+          requested_at?: string
+          role?: Database["public"]["Enums"]["batch_role"]
+          status?: Database["public"]["Enums"]["membership_status"]
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          id?: string
+          invited_by?: string | null
+          joined_at?: string | null
+          profile_id?: string
+          requested_at?: string
+          role?: Database["public"]["Enums"]["batch_role"]
+          status?: Database["public"]["Enums"]["membership_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batch_members_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_members_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_members_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_members_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      batches: {
+        Row: {
+          course_name: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          department_name: string | null
+          description: string | null
+          graduation_year: number | null
+          id: string
+          institution_name: string
+          join_policy: Database["public"]["Enums"]["join_policy"]
+          name: string
+          section: string | null
+          updated_at: string
+          visibility: Database["public"]["Enums"]["batch_visibility"]
+        }
+        Insert: {
+          course_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          department_name?: string | null
+          description?: string | null
+          graduation_year?: number | null
+          id?: string
+          institution_name: string
+          join_policy?: Database["public"]["Enums"]["join_policy"]
+          name: string
+          section?: string | null
+          updated_at?: string
+          visibility?: Database["public"]["Enums"]["batch_visibility"]
+        }
+        Update: {
+          course_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          department_name?: string | null
+          description?: string | null
+          graduation_year?: number | null
+          id?: string
+          institution_name?: string
+          join_policy?: Database["public"]["Enums"]["join_policy"]
+          name?: string
+          section?: string | null
+          updated_at?: string
+          visibility?: Database["public"]["Enums"]["batch_visibility"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batches_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_path: string | null
@@ -62,6 +273,50 @@ export type Database = {
           onboarding_completed_at: string | null
           updated_at: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_batch: {
+        Args: {
+          p_course_name?: string
+          p_department_name?: string
+          p_description?: string
+          p_graduation_year?: number
+          p_institution_name: string
+          p_join_policy?: Database["public"]["Enums"]["join_policy"]
+          p_name: string
+          p_section?: string
+        }
+        Returns: {
+          course_name: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          department_name: string | null
+          description: string | null
+          graduation_year: number | null
+          id: string
+          institution_name: string
+          join_policy: Database["public"]["Enums"]["join_policy"]
+          name: string
+          section: string | null
+          updated_at: string
+          visibility: Database["public"]["Enums"]["batch_visibility"]
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batches"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      my_batch_role: {
+        Args: { p_batch_id: string }
+        Returns: Database["public"]["Enums"]["batch_role"]
       }
       set_own_avatar_path: {
         Args: { object_path: string }
@@ -75,10 +330,77 @@ export type Database = {
           onboarding_completed_at: string | null
           updated_at: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_batch_settings: {
+        Args: {
+          p_batch_id: string
+          p_course_name: string
+          p_department_name: string
+          p_description: string
+          p_graduation_year: number
+          p_institution_name: string
+          p_join_policy: Database["public"]["Enums"]["join_policy"]
+          p_name: string
+          p_section: string
+        }
+        Returns: {
+          course_name: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          department_name: string | null
+          description: string | null
+          graduation_year: number | null
+          id: string
+          institution_name: string
+          join_policy: Database["public"]["Enums"]["join_policy"]
+          name: string
+          section: string | null
+          updated_at: string
+          visibility: Database["public"]["Enums"]["batch_visibility"]
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batches"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
-      [_ in never]: never
+      audit_action:
+        | "member_approved"
+        | "member_rejected"
+        | "member_removed"
+        | "member_left"
+        | "role_changed"
+        | "ownership_transferred"
+        | "invite_created"
+        | "invite_revoked"
+        | "content_removed"
+        | "content_restored"
+        | "report_resolved"
+        | "batch_settings_changed"
+        | "batch_deleted"
+        | "batch_restored"
+      audit_target_kind:
+        | "batch"
+        | "member"
+        | "memory"
+        | "comment"
+        | "media_asset"
+        | "invite"
+        | "report"
+      batch_role: "member" | "moderator" | "admin" | "owner"
+      batch_visibility: "private"
+      join_policy: "invite_only_auto_approve" | "invite_only_requires_approval"
+      membership_status: "pending" | "active" | "rejected" | "removed" | "left"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -204,7 +526,43 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  public: {
+  graphql_public: {
     Enums: {},
+  },
+  public: {
+    Enums: {
+      audit_action: [
+        "member_approved",
+        "member_rejected",
+        "member_removed",
+        "member_left",
+        "role_changed",
+        "ownership_transferred",
+        "invite_created",
+        "invite_revoked",
+        "content_removed",
+        "content_restored",
+        "report_resolved",
+        "batch_settings_changed",
+        "batch_deleted",
+        "batch_restored",
+      ],
+      audit_target_kind: [
+        "batch",
+        "member",
+        "memory",
+        "comment",
+        "media_asset",
+        "invite",
+        "report",
+      ],
+      batch_role: ["member", "moderator", "admin", "owner"],
+      batch_visibility: ["private"],
+      join_policy: [
+        "invite_only_auto_approve",
+        "invite_only_requires_approval",
+      ],
+      membership_status: ["pending", "active", "rejected", "removed", "left"],
+    },
   },
 } as const
