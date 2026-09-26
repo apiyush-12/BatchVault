@@ -14,7 +14,11 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
-**Phase 0 — Foundation: IN PROGRESS (not complete).** Documentation Prompts 01–11 are complete, including the Prompt 11 audit. The Phase 0 repository, toolchain, environment boundary, Supabase client boundaries, migration framework, private Storage buckets, test harnesses and CI are in place.
+**Correction (2026-09-26 session):** the note below saying Phase 0 was "pending only its git checkpoint" was itself committed in `c8ae566 chore: complete phase 0 foundation` — i.e. the file said "not yet committed" inside the commit that committed it. **Phase 0 is in fact COMPLETE**: the commit exists, `git log` confirms it, and every gate recorded below as passing was passing at that commit. This paragraph corrects that stale self-reference; nothing about Phase 0's substance changes.
+
+**Phase 1 — Authentication & Profile: COMPLETE** (2026-09-26, resumed and finished in the same session that found it blocked — the hosted dev project came back healthy). See "Phase 1 — Authentication & Profile (complete)" below for full detail.
+
+**Phase 0 — Foundation: COMPLETE** (commit `c8ae566`). Documentation Prompts 01–11 are complete, including the Prompt 11 audit. The Phase 0 repository, toolchain, environment boundary, Supabase client boundaries, migration framework, private Storage buckets, test harnesses and CI are in place.
 
 **B2 is now CLOSED.** On 2026-09-12 the execution model was verified empirically against a **real hosted, non-production Supabase project** (`BatchVault-Dev`, ref `idmpwblennrdpasfnbyw`, PostgreSQL 17.6, `ap-southeast-1`) across two transports — direct SQL and the production PostgREST surface with a real Supabase Auth JWT. Full results, and the distinction between the earlier reconstructed findings and the real ones, are in `security.md` §32 "B2 verification status". The Supabase-dependent checks that had never run — migrations applied through the CLI, and Storage bucket privacy — were also executed against that project and passed.
 
@@ -28,6 +32,77 @@ A prior session over-stated two items as hard Phase 0 blockers; on review of `ph
 - *"three environments must physically exist"* — `phases.md` says separate projects for **local / preview / production** and architecture §15 frames this as **per-environment isolation** with secrets in *Vercel project settings*. Phase 0 has no deployment scope; "production deployment readiness" is **Phase 9**. The Phase 0 criterion is the resolution/isolation mechanism, which the split typed env module already provides.
 
 No product table exists on the hosted project (verified: 0 tables in `public`). No auth flow, no feature module, and no product screen exists.
+
+## Phase 1 — Authentication & Profile (complete)
+
+**Status: COMPLETE.** Implemented per Prompt 13 (`13_PHASE_1_AUTH_PROFILE.md`) and `phases.md` Phase 1. Started 2026-09-26, blocked mid-session when the hosted dev project (`BatchVault-Dev`, ref `idmpwblennrdpasfnbyw`) briefly could not be reached (DNS/pooler failure); the user confirmed the project healthy and this session resumed and finished from exactly that point — no rework, no scope drift.
+
+### What was implemented
+
+**Database — three migrations applied to the hosted dev project via direct SQL (not `supabase db push`, which needs Docker; see "Known issues" below) and verified by 50 passing adversarial tests:**
+
+- `20260926120000_phase1_profiles.sql` — `profiles` (RLS enabled+forced in the same migration; `id` defaulted from `auth.uid()` with **no INSERT grant on that column at all**; `display_name`/`bio` the only ordinarily-writable columns, security.md §5.4.1; every named client role explicitly `REVOKE`d before granting back, per the B5 standing rule).
+- `20260926120100_phase1_profile_controlled_writes.sql` — two controlled write paths per security.md §5.4.3: `complete_onboarding()` (idempotent; sets `onboarding_completed_at = coalesce(..., now())` for the caller's own, non-deleted row) and `set_own_avatar_path(object_path text)` (checks the path's first segment equals `auth.uid()`, and that a real object exists at that path in the `avatars` bucket, before recording it). Both `SECURITY DEFINER`, schema-qualified, pinned empty `search_path`, derive the caller from `auth.uid()` with an explicit NULL branch, `EXECUTE` granted to `authenticated` only.
+- `20260926120200_phase1_avatar_storage_policies.sql` — self-only Storage policies on `storage.objects` for the `avatars` bucket (select/insert/update/delete, each scoped to `(storage.foldername(name))[1] = auth.uid()::text`). The `batch-media` bucket remains untouched and policy-less (Phase 4A scope).
+- `types/database.ts` generated from the live schema via `supabase gen types typescript --linked` (rules.md §1.1 — now enforced: hand-written row types are no longer permitted). `lib/supabase/{client,server,service-role}.ts` now parametrize their Supabase clients with `Database`.
+
+**Backend:**
+
+- `features/authentication/` — `schema.ts`, `types.ts`, `redirects.ts` (the callback redirect allowlist, security.md §13 — only `/home`/`/onboarding` are ever trusted), `actions.ts` (`signUpAction`, `signInAction`, `signOutAction`, `requestPasswordResetAction`, `updatePasswordAction`). Every action: authenticate → validate → authorize → execute → revalidate/redirect; every expected failure returns the same generic message (security.md §3).
+- `features/profiles/` — `schema.ts`, `types.ts`, `permissions.ts` (own-row-only; the shared-batch clause is deliberately **not** approximated — it needs `batch_members`, Phase 2), `queries.ts` (`getOwnProfile`, `getOwnAvatarUrl`), `actions.ts` (`saveOwnProfileAction` create-or-update, deliberately **separate** from `markOnboardingCompleteAction` because the avatar controlled-write path needs the profile row to already exist; `updateProfileAction`; `requestAvatarUploadAction`/`confirmAvatarUploadAction` for the server-composed-path avatar flow).
+- `lib/auth/session.ts` — `getVerifiedUser()`, `hasCompletedOnboarding()`.
+- `lib/env` — added `NEXT_PUBLIC_SITE_URL` (client-safe; builds the absolute `emailRedirectTo`/`redirectTo` Supabase Auth requires). **`lib/env/schema.ts` was split into `client-schema.ts` and `server-schema.ts`** — see "Durable decision: the env-schema split" below; this is a real fix, not a refactor for its own sake.
+- `middleware.ts` — session refresh only, exactly per rules.md §1.2 ("does nothing else"). Route protection lives in each group's `layout.tsx` instead: `(auth)/layout.tsx` (bounces an already-signed-in user away), `(onboarding)/layout.tsx` (requires a session, bounces the already-onboarded away), `(app)/layout.tsx` (requires a session **and** completed onboarding).
+
+**Frontend — pages and components**, all React Hook Form + Zod, accessible (`aria-describedby`/`aria-invalid` via the new `FormField` primitive), mobile-first:
+
+- `/sign-up`, `/sign-in`, `/forgot-password` (all under `(auth)`), `/onboarding` (under `(onboarding)`), `/home`, `/settings` (both under `(app)`).
+- `/reset-password` is **deliberately outside `(auth)`**: a recovery-session user genuinely has an active session, so `(auth)`'s "already signed in, go away" guard would break that exact flow. It owns its own check (no session at all → "link expired").
+- `app/(auth)/callback/route.ts` — PKCE code exchange, no body to parse, redirect target allowlisted before anything else runs.
+- `components/ui/{input,label,textarea,form-field}.tsx` — minimal vendored primitives.
+- `features/profiles/components/avatar-uploader.tsx` — server-composed path (`{auth.uid()}/{uuid}`), direct-to-Storage upload via `uploadToSignedUrl`, then the controlled write path records it. Client-side type/size checks are explicitly documented as UX-only (architecture §8, ADR-08a analog).
+
+### Durable decision: the env-schema split (found and fixed by the artifact-scan gate, not assumed safe)
+
+Phase 0's `lib/env/schema.ts` defined **both** `clientEnvSchema` and `serverEnvSchema` in one module. Once a real Client Component (`AvatarUploader`) started importing the browser Supabase client — which imports `lib/env/client.ts` — the literal string `SUPABASE_SERVICE_ROLE_KEY` (the variable *name*, never a real value) became reachable through that same module and landed in a built client chunk. `pnpm test:artifacts` caught this for real, not hypothetically. Fixed by physically splitting the module: `lib/env/client-schema.ts` (client-safe; the only thing `client.ts` may ever import) and `lib/env/server-schema.ts` (server-only; imported only by `server.ts`). The old `lib/env/schema.ts` is deleted. **Standing rule from here on:** `client.ts` must only ever import from `client-schema.ts`, never through anything that also reaches the server-only schema — this is exactly the shape of mistake that leaks a secret's name (and, in a less careful version, its value).
+
+A second, smaller fix from the same gate: the artifact scanner's own heuristic for `"sb_secret_"` was too broad — it matched the *legitimate*, client-shippable `isSecretShapedKey()` prefix-detection string (10 characters, no suffix), which must run in the browser to validate that `NEXT_PUBLIC_SUPABASE_ANON_KEY` itself isn't secret-shaped. Narrowed to require a realistic secret-length suffix (16+ trailing characters) and to decode JWT-shaped literals and check the actual `role` claim, rather than matching any JWT structure (the anon key is also legitimately a JWT).
+
+### Tests written and gates actually executed (all against the real hosted `BatchVault-Dev` project)
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | **PASS** |
+| Typecheck | `pnpm typecheck` | **PASS** |
+| Unit tests | `pnpm test:unit` | **PASS** — 23 tests |
+| Adversarial DB suite | `pnpm test:db` | **PASS** — 50 tests, 5 files (`profiles.test.ts` new: 18 tests; `avatar-storage.test.ts` new: 6 HTTP-level tests; plus the Phase 0 `b2-execution-model`/`foundation-migrations`/`storage-buckets` suites, two of which needed real fixes — see below) |
+| Production build | `pnpm build` | **PASS** |
+| Client artifact scan | `pnpm test:artifacts` | **PASS** — 3 tests (after the env-schema-split fix above) |
+| Dependency audit | `pnpm audit --prod --audit-level high` | **PASS** — no known vulnerabilities |
+| Playwright E2E | `pnpm test:e2e` | **PASS** — 30 passed, 2 explicitly skipped (both named, neither silent — see below) |
+
+**New test files:** `tests/db/profiles.test.ts` (unauthenticated access; identity-on-insert forgery; column-level enforcement on UPDATE for `id`/`deleted_at`/`onboarding_completed_at`/`avatar_path`; the onboarding-completion **matched pair** — legitimate path succeeds and is idempotent, direct DML stays refused including a caller-chosen timestamp and another user's row; the avatar-path controlled write path against a **real seeded Storage object** — success for the caller's own object, refusal for another profile's object, an arbitrary path, and a well-formed own-prefix path with no real object behind it; `EXECUTE` grants), `tests/db/avatar-storage.test.ts` (real HTTP calls against the Storage REST API with real bearer tokens — self-read succeeds, another authenticated user's read/upload refused, unauthenticated refused), `tests/db/support/auth-fixtures.ts` (disposable real Auth users via the Admin API, since `profiles.id`'s real FK to `auth.users` means a synthetic UUID — the B2-probe pattern — cannot be used here). `tests/e2e/auth-onboarding-flow.spec.ts`, `auth-signup.spec.ts`, `auth-accessibility.spec.ts`, `tests/e2e/support/user-fixtures.ts`.
+
+**Real defects the gates caught and this session fixed, not worked around:**
+
+1. **Two stale Phase-0-era test assertions.** `foundation-migrations.test.ts` asserted `profiles` must not exist; `storage-buckets.test.ts` asserted zero Storage policies must exist. Both were correct for Phase 0 and are now correctly updated for what Phase 1 legitimately creates (not weakened — `storage-buckets.test.ts` now asserts the *exact* four avatar policy names and that none of them touch `batch-media`).
+2. **A `Date`-object equality bug** in the onboarding-idempotency test (`pg` returns `timestamptz` as `Date` instances; `toBe` is reference equality, not value equality) — fixed with `toEqual` and a same-transaction sequential-call structure instead of relying on `UNION ALL` evaluation order.
+3. **The env-schema client/server leak**, above — a real security-relevant fix.
+4. **A real WCAG AA contrast failure**: `--bv-primary` (`oklch(0.62 0.145 48)`, `#ca662b`) against `--bv-primary-foreground` measured 3.73:1 via axe on an actual text-labeled primary button (`Create account`) — Phase 0 never exercised this combination (its only primary-styled control was an icon button, held to the looser 3:1 non-text threshold). Darkened to `oklch(0.5 0.155 48)` / hover `oklch(0.45 0.16 48)`.
+5. **A Playwright strict-mode violation**, not a product bug: Next.js's own `#__next-route-announcer__` accessibility live region mirrors heading text for screen readers, so a bare `getByText(name)` ambiguously matched both it and the real heading. Scoped the assertion to the heading role instead.
+6. **Supabase Cloud's public `signUp` domain validation** rejects `@example.com` (an `email_address_invalid` the Admin API used elsewhere in the suite does not enforce) — every test fixture now uses `@bv-e2e-test.dev` instead.
+
+**The two explicitly-skipped E2E tests (both named, neither silent, per testing.md's "skipped is always named, never implied"):** `auth-signup.spec.ts`'s "check-your-email" test is scoped to run on one browser project only (it is the one test that sends a real Supabase confirmation email, and running it on every project would multiply real sends against the hosted project's outgoing-email quota for no additional coverage), and separately detects the specific `over_email_send_rate_limit` condition and skips with that exact reason if the hosted project's quota is already exhausted when the suite runs — this happened during this session (the quota was consumed by this session's own repeated runs) and is an external Supabase Cloud limit, not a code defect. **This is the one Phase 1 behavior not fully exercised end-to-end by this session's own run**; the signup→"check your email" UI branch is proven by code review and by the identical logic path `signUpAction` shares with the confirmed-working sign-in/onboarding flow, but not by a green assertion in this run specifically.
+
+**Known, accepted, honestly documented (not gaps to silently fix later):**
+
+- Migrations were applied via a direct `pg` connection reading `.env.local`, not `supabase db push --linked` — the CLI's own type-generation (`--linked`) worked fine (no Docker needed for that path), but `db push`/`db reset` require the local Docker-backed shadow database, still unavailable on this machine. The CLI's migration ledger (`supabase_migrations.schema_migrations`) was updated manually to stay consistent for future `supabase migration list --linked` calls.
+- `middleware.ts` triggers a Next.js 16 deprecation notice ("use proxy instead") — non-blocking, left as `middleware.ts` because every doc (`architecture.md` §4, `rules.md` §1.2) refers to it by that name; a rename is a future, separately-scoped cleanup.
+- Avatar visibility remains strictly self-only in this phase, as scoped — no co-member read path exists because `batch_members` does not exist yet.
+
+### memory.md update
+
+Phase 1 complete; `profiles` shipped with its writable-column set (`display_name`, `bio`); co-member avatar visibility deferred to Phase 2, per phases.md's own instruction for this update.
 
 ## Completed
 
@@ -156,7 +231,7 @@ Final SQL function names and signatures are an implementation decision — not f
 
 ## Database Summary
 
-MVP tables planned (**none implemented yet**): `profiles`, `batches`, `batch_members`, `batch_invites`, `memories`, `media_assets`, `comments`, `reactions`, `reports`, `audit_logs`.
+MVP tables: `profiles` (**implemented, Phase 1**). Planned, not yet implemented: `batches`, `batch_members`, `batch_invites`, `memories`, `media_assets`, `comments`, `reactions`, `reports`, `audit_logs`.
 
 Key schema ideas to remember:
 
@@ -179,10 +254,10 @@ Post-MVP tables (`albums`, `album_memories`, **`memory_people`** — manual peop
 
 ## Phase Plan
 
-Per `phases.md`, Phase 0 is **in progress**; every later phase is **not started**:
+Per `phases.md`:
 
-- Phase 0 — Foundation — **IN PROGRESS**
-- Phase 1 — Authentication & Profile
+- Phase 0 — Foundation — **COMPLETE**
+- Phase 1 — Authentication & Profile — **COMPLETE** (see above)
 - Phase 2 — Batch Spaces
 - Phase 3A — Invitations & Join
 - Phase 3B — Membership Decisions & Roles
@@ -196,7 +271,7 @@ Per `phases.md`, Phase 0 is **in progress**; every later phase is **not started*
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: Phase 0, in progress** — the foundation is built, **every runnable gate has been executed and passes** (including `pnpm test:db` at 26/26 against real Supabase), the hosted migration and Storage-privacy checks pass, and **B2, B5 and B6 are all closed**. The only outstanding Phase 0 item is the **git checkpoint**, which the working sessions were instructed not to make.
+**Current implementation phase: Phase 1, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1's migrations are applied to the hosted dev project, every required gate has been executed and observed passing (lint, typecheck, unit, the 50-test adversarial DB suite, build, artifact scan, audit, Playwright E2E), and `docs/memory.md` is updated per phases.md's own instruction. See "Phase 1 — Authentication & Profile (complete)" above for full detail. **Nothing has been committed** — that remains the next step, followed by Phase 2 only on explicit instruction.
 
 ## Post-MVP Boundaries
 
@@ -285,16 +360,11 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Finish Phase 0** — and only that. Phase 1 / Prompt 13 is **not** yet the next allowed task.
+**Commit Phase 1**, then **Phase 2 / Prompt 14 — Batch Spaces** only on explicit instruction.
 
-Done on 2026-09-12: the hosted project is linked, all three migrations are applied through the CLI, Storage privacy is verified, **B2 is closed**, and **B5 and B6 are closed**. Every runnable Phase 0 gate has been executed and observed passing, including the committed DB suite against real Supabase.
+Phase 1 is complete (see "Phase 1 — Authentication & Profile (complete)" above): migrations applied to the hosted dev project, every required gate executed and observed passing, `docs/memory.md` updated. Nothing has been committed yet — this session was told not to commit.
 
-What remains:
-
-1. **Commit Phase 0** — `phases.md` Phase 0 Definition of Done includes the git checkpoint ("One commit: `chore: phase 0 foundation` … made only after gates pass"). Gates have now passed; the commit has deliberately not been made because the working sessions were instructed not to commit.
-2. **Let CI run once** — the natural consequence of (1). Not itself a documented gate (see the note under "Current Phase"), but the first real execution of the configured workflow.
-
-Only once (1) is done may Phase 0 be marked COMPLETE and the next task advanced to **Phase 1 / Prompt 13 — Authentication & Profile**. Phase 1's first migration must apply the B5 standing rule: `REVOKE` from `anon`/`authenticated`/`service_role` by name, and assert the ACL.
+**Before Phase 2 begins, re-confirm B2** against the hosted project (Phase 2's own hard prerequisite, per `phases.md`: "Phase 2 begins only ... with B2 signed off"). B2 was closed 2026-09-12 against this same project; Phase 1 did not re-run the B2 suite itself, only the Phase 1-specific adversarial tests, so a quick re-confirmation (`pnpm test:db` already exercises the B2 file every run — it passed as part of this session's 50/50) is sufficient rather than a fresh full B2 investigation.
 
 **Foundation configuration fact, corrected by measurement.** `supabase/config.toml` sets `auto_expose_new_tables = false`, which applies to the **local CLI stack only**. The hosted project does **not** behave that way: `ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated`/`service_role` full DML on new `public` tables and `EXECUTE` on new functions (B5). The earlier note that "each cloud project must be configured to match" was right to flag this — it is now confirmed that the cloud project does **not** match, and the required action is an explicit `REVOKE` in every migration (not a `PUBLIC` revoke, which does nothing here).
 
@@ -328,4 +398,4 @@ Every future session must:
 
 ---
 
-STOP — Prompts 01–11 complete (documentation planning and audit). **Phase 0 / Prompt 12 is IN PROGRESS, pending only its git checkpoint.** As of 2026-09-12: the foundation is built, all three migrations are applied to the linked hosted project, Storage privacy is verified, **B2, B5 and B6 are all CLOSED**, and every runnable gate was executed and observed passing — including `corepack pnpm test:db` at **26 passed / 0 failed / 0 skipped** against real Supabase (`kind: "supabase"`). Outstanding: the commit (`chore: phase 0 foundation`) and the first CI run that follows it. **Next Task: commit Phase 0.** Phase 1 / Prompt 13 is not yet authorised.
+STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (2026-09-26): `profiles` and its two controlled write paths are live on the hosted `BatchVault-Dev` project; `features/authentication` and `features/profiles` are fully implemented; every required gate (lint, typecheck, unit — 23, adversarial DB — 50, build, artifact scan, audit, Playwright E2E — 30 passed/2 explicitly-named-skip) was executed against the real project and observed passing; `docs/memory.md` is updated. **Nothing has been committed** — this session was told not to commit. **Next Task: commit Phase 1, then Phase 2 / Prompt 14 — Batch Spaces only on explicit instruction**, with B2 re-confirmed first (see "Next Task" above).

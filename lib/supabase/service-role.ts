@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 
 import { serverEnv } from "@/lib/env/server";
+import type { Database } from "@/types/database";
 
 /**
  * Service-role Supabase client — the single module holding system authority
@@ -29,7 +30,7 @@ import { serverEnv } from "@/lib/env/server";
  * change, not a convenience.
  */
 export function createSupabaseServiceRoleClient() {
-  return createClient(
+  return createClient<Database>(
     serverEnv.NEXT_PUBLIC_SUPABASE_URL,
     serverEnv.SUPABASE_SERVICE_ROLE_KEY,
     {

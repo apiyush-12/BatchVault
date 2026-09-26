@@ -1,13 +1,12 @@
 import "server-only";
 
 import { clientEnv } from "./client";
+import { parseEnv, type ClientEnv } from "./client-schema";
 import {
   assertNoPubliclyExposedSecrets,
-  parseEnv,
   serverEnvSchema,
-  type ClientEnv,
   type ServerEnv,
-} from "./schema";
+} from "./server-schema";
 
 /**
  * Server-only configuration (architecture §15; security.md §12).

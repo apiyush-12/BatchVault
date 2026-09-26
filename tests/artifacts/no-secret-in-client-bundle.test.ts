@@ -45,6 +45,30 @@ async function collectFiles(directory: string): Promise<string[]> {
   return files.flat();
 }
 
+/** Decodes a JWT-shaped string's payload `role` claim, or `null` if it isn't one. */
+function jwtPayloadRole(token: string): string | null {
+  const parts = token.split(".");
+  const payload = parts[1];
+  if (parts.length !== 3 || payload === undefined) {
+    return null;
+  }
+  try {
+    const json = Buffer.from(payload, "base64url").toString("utf8");
+    const parsed: unknown = JSON.parse(json);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "role" in parsed &&
+      typeof (parsed as { role: unknown }).role === "string"
+    ) {
+      return (parsed as { role: string }).role;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function readClientArtifacts(): Promise<Array<[string, string]>> {
   const present = CLIENT_OUTPUT_DIRECTORIES.filter((directory) =>
     existsSync(directory),
@@ -77,6 +101,16 @@ describe("client build artifacts", () => {
     // The value actually configured at build time, when one was configured.
     const configuredSecret = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+    // A realistic secret VALUE, not the bare prefix: lib/env/client-schema.ts
+    // legitimately ships `isSecretShapedKey()`'s 10-character `"sb_secret_"`
+    // prefix-detection string to the browser on purpose (it validates that
+    // NEXT_PUBLIC_SUPABASE_ANON_KEY itself isn't secret-shaped) — matching
+    // that bare literal would be a permanent false positive. A real leaked
+    // key has a long random suffix after the prefix; that is what this
+    // checks for.
+    const secretShapedKeyPattern = /sb_secret_[A-Za-z0-9_-]{16,}/;
+    const serviceRoleJwtPattern = /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
+
     const offenders = artifacts
       .filter(([, contents]) => {
         if (
@@ -86,11 +120,21 @@ describe("client build artifacts", () => {
         ) {
           return true;
         }
-        return (
-          contents.includes("SUPABASE_SERVICE_ROLE_KEY") ||
-          contents.includes("sb_secret_") ||
-          contents.includes('"role":"service_role"')
-        );
+        if (secretShapedKeyPattern.test(contents)) {
+          return true;
+        }
+        if (contents.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+          return true;
+        }
+        // A JWT-shaped literal is only interesting if its payload actually
+        // decodes to role: service_role — the anon key is also a JWT and
+        // legitimately ships to the browser.
+        for (const match of contents.matchAll(new RegExp(serviceRoleJwtPattern, "g"))) {
+          if (jwtPayloadRole(match[0]) === "service_role") {
+            return true;
+          }
+        }
+        return false;
       })
       .map(([file]) => file);
 

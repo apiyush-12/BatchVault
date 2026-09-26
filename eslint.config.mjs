@@ -13,6 +13,9 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     "supabase/.temp/**",
+    // Generated from the live schema (rules.md §1.1) — never hand-edited,
+    // never linted as if it were our own source.
+    "types/database.ts",
   ]),
   {
     files: ["**/*.ts", "**/*.tsx"],

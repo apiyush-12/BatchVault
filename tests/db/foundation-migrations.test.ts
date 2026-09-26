@@ -141,7 +141,10 @@ describe("set_updated_at()", () => {
 });
 
 describe("Phase 0 schema scope", () => {
-  it("creates no BatchVault application table", async () => {
+  it("creates no BatchVault application table beyond what the current phase authorizes", async () => {
+    // `profiles` is deliberately excluded from this list: Phase 1
+    // (phases.md) creates it. Every other MVP table remains Phase 2+, and
+    // every post-MVP table remains uncreated.
     const { rows } = await client.query<{ tablename: string }>(
       `select tablename
          from pg_tables
@@ -149,7 +152,6 @@ describe("Phase 0 schema scope", () => {
           and tablename = any($1::text[])`,
       [
         [
-          "profiles",
           "batches",
           "batch_members",
           "batch_invites",

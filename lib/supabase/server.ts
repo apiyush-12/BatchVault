@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { clientEnv } from "@/lib/env/client";
+import type { Database } from "@/types/database";
 
 /**
  * Server, user-scoped Supabase client (architecture §4, §6).
@@ -12,11 +13,13 @@ import { clientEnv } from "@/lib/env/client";
  * as the signed-in user and every statement they issue is evaluated against
  * that user's RLS policies. This is the default client on the server; the
  * service-role client is the reviewed exception, never the convenience.
+ *
+ * Typed against the generated schema (rules.md §1.1).
  */
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     clientEnv.NEXT_PUBLIC_SUPABASE_URL,
     clientEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {

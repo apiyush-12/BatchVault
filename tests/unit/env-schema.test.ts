@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assertNoPubliclyExposedSecrets,
   clientEnvSchema,
   EnvironmentConfigurationError,
   isSecretShapedKey,
   parseEnv,
+} from "@/lib/env/client-schema";
+import {
+  assertNoPubliclyExposedSecrets,
   serverEnvSchema,
-} from "@/lib/env/schema";
+} from "@/lib/env/server-schema";
 
 /**
  * The environment boundary is the one-character-mistake surface described in
@@ -24,30 +26,36 @@ function jwt(payload: Record<string, unknown>): string {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.signature`;
 }
 
+function validClientEnv(
+  overrides: Partial<Record<string, string | undefined>> = {},
+): Record<string, string | undefined> {
+  return {
+    NEXT_PUBLIC_SUPABASE_URL: "https://project-ref.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
+    NEXT_PUBLIC_SITE_URL: "https://batchvault.example",
+    ...overrides,
+  };
+}
+
 describe("client environment schema", () => {
   it("accepts a well-formed client configuration", () => {
-    const parsed = parseEnv(
-      clientEnvSchema,
-      {
-        NEXT_PUBLIC_SUPABASE_URL: "https://project-ref.supabase.co",
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
-      },
-      "client",
-    );
+    const parsed = parseEnv(clientEnvSchema, validClientEnv(), "client");
 
     expect(parsed.NEXT_PUBLIC_SUPABASE_URL).toBe(
       "https://project-ref.supabase.co",
     );
+    expect(parsed.NEXT_PUBLIC_SITE_URL).toBe("https://batchvault.example");
   });
 
-  it("accepts the local Supabase stack's http URL", () => {
+  it("accepts the local Supabase stack's http URL for both origins", () => {
     expect(() =>
       parseEnv(
         clientEnvSchema,
-        {
+        validClientEnv({
           NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321",
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "sb_publishable_abcdefghijklmnop",
-        },
+          NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
+        }),
         "client",
       ),
     ).not.toThrow();
@@ -57,10 +65,7 @@ describe("client environment schema", () => {
     expect(() =>
       parseEnv(
         clientEnvSchema,
-        {
-          NEXT_PUBLIC_SUPABASE_URL: undefined,
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
-        },
+        validClientEnv({ NEXT_PUBLIC_SUPABASE_URL: undefined }),
         "client",
       ),
     ).toThrow(EnvironmentConfigurationError);
@@ -70,23 +75,35 @@ describe("client environment schema", () => {
     expect(() =>
       parseEnv(
         clientEnvSchema,
-        {
-          NEXT_PUBLIC_SUPABASE_URL: "project-ref.supabase.co",
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
-        },
+        validClientEnv({ NEXT_PUBLIC_SUPABASE_URL: "project-ref.supabase.co" }),
         "client",
       ),
     ).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
+  });
+
+  it("requires NEXT_PUBLIC_SITE_URL and rejects a malformed value", () => {
+    expect(() =>
+      parseEnv(
+        clientEnvSchema,
+        validClientEnv({ NEXT_PUBLIC_SITE_URL: undefined }),
+        "client",
+      ),
+    ).toThrow(/NEXT_PUBLIC_SITE_URL/);
+
+    expect(() =>
+      parseEnv(
+        clientEnvSchema,
+        validClientEnv({ NEXT_PUBLIC_SITE_URL: "not a url" }),
+        "client",
+      ),
+    ).toThrow(/NEXT_PUBLIC_SITE_URL/);
   });
 
   it("rejects a service-role credential in the client key slot", () => {
     expect(() =>
       parseEnv(
         clientEnvSchema,
-        {
-          NEXT_PUBLIC_SUPABASE_URL: "https://project-ref.supabase.co",
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: SERVICE_ROLE_JWT,
-        },
+        validClientEnv({ NEXT_PUBLIC_SUPABASE_ANON_KEY: SERVICE_ROLE_JWT }),
         "client",
       ),
     ).toThrow(/service-role/);
@@ -96,10 +113,9 @@ describe("client environment schema", () => {
     expect(() =>
       parseEnv(
         clientEnvSchema,
-        {
-          NEXT_PUBLIC_SUPABASE_URL: "https://project-ref.supabase.co",
+        validClientEnv({
           NEXT_PUBLIC_SUPABASE_ANON_KEY: "sb_secret_abcdefghijklmnopqrst",
-        },
+        }),
         "client",
       ),
     ).toThrow(/service-role/);
@@ -110,10 +126,7 @@ describe("client environment schema", () => {
     try {
       parseEnv(
         clientEnvSchema,
-        {
-          NEXT_PUBLIC_SUPABASE_URL: "https://project-ref.supabase.co",
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: secret,
-        },
+        validClientEnv({ NEXT_PUBLIC_SUPABASE_ANON_KEY: secret }),
         "client",
       );
       expect.unreachable("expected the schema to reject a secret-shaped key");
@@ -149,8 +162,7 @@ describe("public exposure guard", () => {
   it("allows a configuration with no publicly exposed secret", () => {
     expect(() =>
       assertNoPubliclyExposedSecrets({
-        NEXT_PUBLIC_SUPABASE_URL: "https://project-ref.supabase.co",
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
+        ...validClientEnv(),
         SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT,
       }),
     ).not.toThrow();

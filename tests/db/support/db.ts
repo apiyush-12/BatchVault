@@ -108,6 +108,27 @@ export function supabaseAnonKey(): string {
   return key;
 }
 
+/**
+ * The service-role credential, under the documented name — used only for
+ * disposable test-fixture setup (creating/deleting test Auth users, seeding
+ * known Storage objects), never as a stand-in for a client role's own
+ * access. This mirrors the one legitimate use of `NEXT_PUBLIC_SUPABASE_URL`
+ * as an admin-API base URL, not a client credential.
+ */
+export function supabaseServiceRoleKey(): string {
+  loadLocalEnv();
+
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (key === undefined || key === "") {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is required for test-fixture setup " +
+        "(disposable Auth users, seeded Storage objects). Set it in " +
+        ".env.local or the environment.",
+    );
+  }
+  return key;
+}
+
 export async function connect(): Promise<Client> {
   const client = new Client({ connectionString: databaseUrl() });
   await client.connect();

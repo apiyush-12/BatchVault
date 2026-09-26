@@ -15,6 +15,9 @@ env:
   # value in the client bundle, so a leak fails the build loudly
   # (security.md §12).
   SUPABASE_SERVICE_ROLE_KEY: ci-sentinel-service-role-value-not-a-real-key
+  # Client-safe, not a secret (Phase 1: features/authentication's callback
+  # URLs). A placeholder origin is fine for build/E2E in CI.
+  NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3210
 
 jobs:
   quality:

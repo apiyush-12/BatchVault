@@ -54,14 +54,26 @@ describe("foundation Storage buckets", () => {
     expect(rows.map((row) => row.id)).toEqual([]);
   });
 
-  it("adds no permissive Storage policy at this phase", async () => {
-    const { rows } = await client.query<{ policyname: string }>(
-      `select policyname from pg_policies
+  it("adds only the Phase 1 avatar policies, and nothing for batch-media", async () => {
+    const { rows } = await client.query<{ policyname: string; qual: string | null }>(
+      `select policyname, qual::text as qual from pg_policies
         where schemaname = 'storage' and tablename = 'objects'`,
     );
-    // Deny-by-default is the correct Phase 0 posture: policies arrive with
-    // the flows they protect (Phase 1 avatars, Phase 4A batch media).
-    expect(rows.map((row) => row.policyname)).toEqual([]);
+    const names = rows.map((row) => row.policyname).sort();
+
+    // Deny-by-default remains correct for batch-media: those policies arrive
+    // with the flow they protect in Phase 4A, not before.
+    expect(names).toEqual(
+      [
+        "avatars_delete_own",
+        "avatars_insert_own",
+        "avatars_select_own",
+        "avatars_update_own",
+      ].sort(),
+    );
+    expect(rows.every((row) => !(row.qual ?? "").includes("batch-media"))).toBe(
+      true,
+    );
   });
 
   it("keeps row level security enabled on storage.objects", async () => {

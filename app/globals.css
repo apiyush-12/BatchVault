@@ -27,8 +27,15 @@
   --bv-foreground-muted: oklch(0.5 0.015 60);
 
   /* Brand / accent */
-  --bv-primary: oklch(0.62 0.145 48);
-  --bv-primary-hover: oklch(0.57 0.15 48);
+  /*
+   * Darkened from the original oklch(0.62 ...): a real primary submit
+   * button (sign-up/sign-in, Phase 1) measured 3.73:1 against
+   * --bv-primary-foreground via axe — below WCAG AA's 4.5:1 for normal text.
+   * Phase 0 never exercised a text-labeled primary button, so this went
+   * undetected until Phase 1's accessibility gate caught it for real.
+   */
+  --bv-primary: oklch(0.5 0.155 48);
+  --bv-primary-hover: oklch(0.45 0.16 48);
   --bv-primary-foreground: oklch(0.99 0.005 75);
   --bv-accent: oklch(0.66 0.13 340);
   --bv-accent-foreground: oklch(0.99 0.005 75);

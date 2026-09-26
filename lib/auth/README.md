@@ -1,11 +1,10 @@
 # lib/auth
 
-Session helpers (architecture §16) — **empty in Phase 0.**
+Session helpers (architecture §16). Implemented in **Phase 1**.
 
-Will hold the server-side helpers for reading the verified Supabase session,
-so Server Components and Server Actions derive the acting user from the
-session and never from client input (architecture §4, §18.4).
+`session.ts` — `getVerifiedUser()` and `hasCompletedOnboarding()`, so Server
+Components/Actions and the `(app)`/`(onboarding)`/`(auth)` layout guards
+derive the acting user from the verified session, never from client input
+(architecture §4, §18.4).
 
-Auth flows themselves belong to `features/authentication`, which arrives in
-Phase 1. The Supabase clients this will build on already exist in
-`lib/supabase/`.
+Auth flows themselves live in `features/authentication`.
