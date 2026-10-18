@@ -57,9 +57,12 @@ export async function saveOwnProfileAction(
   const { displayName, bio } = parsed.data;
   const bioValue = normalizeBio(bio);
 
+  // Explicit, not left to RLS alone — see the identical fix and rationale
+  // in features/profiles/queries.ts's getOwnProfile() (Phase 3B).
   const { data: existing } = await supabase
     .from("profiles")
     .select("id")
+    .eq("id", userData.user.id)
     .maybeSingle();
 
   const writeResult =

@@ -44,6 +44,14 @@ export async function getOwnProfile(): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select(OWN_PROFILE_COLUMNS)
+    // Explicit, not left to RLS alone: `profiles` now carries multiple
+    // additive OR-combined read policies (co-member, and — since Phase
+    // 3B — mod+ reviewing a pending requester), so an unfiltered query can
+    // legitimately admit more than one row once the caller shares a batch
+    // with anyone else. `.maybeSingle()` with no WHERE clause would then
+    // error (PGRST116) instead of returning the caller's own row — a real,
+    // latent defect this phase's own test flow surfaced.
+    .eq("id", userData.user.id)
     .maybeSingle();
 
   if (error !== null) {

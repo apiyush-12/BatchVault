@@ -14,7 +14,9 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
-**Phase 3A — Invitations & Join: COMPLETE** (2026-10-18). See "Phase 3A — Invitations & Join (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+**Phase 3B — Membership Decisions & Roles: COMPLETE** (2026-10-18). See "Phase 3B — Membership Decisions & Roles (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+
+**Phase 3A — Invitations & Join: COMPLETE** (2026-10-18). See "Phase 3A — Invitations & Join (complete)" below for full detail.
 
 **Phase 2 — Batch Spaces: COMPLETE** (2026-09-26). See "Phase 2 — Batch Spaces (complete)" below for full detail.
 
@@ -107,6 +109,41 @@ A second, smaller fix from the same gate: the artifact scanner's own heuristic f
 ### memory.md update
 
 Phase 1 complete; `profiles` shipped with its writable-column set (`display_name`, `bio`); co-member avatar visibility deferred to Phase 2, per phases.md's own instruction for this update.
+
+## Phase 3B — Membership Decisions & Roles (complete)
+
+**Status: COMPLETE.** Implemented per Prompt 15 (`15_PHASE_3_INVITES_JOIN.md`, "Phase 3B" section) and `phases.md` Phase 3B. No batch deletion, account deletion, content moderation, or platform tooling was built (all explicitly out of scope). Scoped update only — see Phase 3A above for full narrative conventions this phase reuses unchanged (direct-`pg` migration apply, `NODE_OPTIONS=--use-system-ca`, the pnpm shim for Playwright's webServer).
+
+**Database — one migration, no new tables** (`phases.md`: "status/role transitions on `batch_members` plus audit rows"), applied via direct `pg` connection and hand-extended into `types/database.ts`:
+
+- `20261018150000_phase3b_membership_rpcs.sql` — five `SECURITY DEFINER` RPCs, all keyed by `(p_batch_id, p_target_profile_id)` rather than the membership row id (matches what the roster already exposes): `approve_member`/`reject_member` (mod+ only; legal transition is `pending` → `active`/`rejected` only); `remove_member` and `change_member_role` both built on **one ceiling comparison** — `caller_role > target.role` (and, for role changes, also `caller_role > p_new_role`) — which reproduces every row of security.md §4's capability matrix exactly, including a moderator's effective zero role-change capability, with no per-tier special-casing; `transfer_ownership` (owner-only, demotes the outgoing owner **before** promoting the new one, since the at-most-one-active-owner partial unique index is a plain index, not a deferrable constraint, and would reject the reverse order mid-transaction). All five `returns public.batch_members` directly (not `RETURNS TABLE`) — `batch_members` has no column needing exclusion, so there was no reason to repeat Phase 3A's `RETURNS TABLE`/OUT-parameter name-collision hazard here.
+- Same migration also adds `profiles_select_pending_review`, a narrow additive RLS policy: **a real defect this phase's own feature would otherwise ship broken.** Phase 2's `profiles_select_shared_batch` only admits a profile whose membership `status = 'active'`, so a mod+ reviewing the pending-approval queue could not see a pending requester's name at all. Scoped exactly to that need (mod+ of the same batch, target `status = 'pending'`), proven safe against the recursion trap for the identical reason Phase 2's own policy documents.
+
+**A second real defect found and fixed, not caused by new code but newly exercised by it:** `features/profiles/queries.ts`'s `getOwnProfile()` and `features/profiles/actions.ts`'s `saveOwnProfileAction()` both queried `profiles` with **no `WHERE id = ...` filter**, relying entirely on RLS to scope to "my own row." That was always fragile — Phase 2's own shared-batch policy already meant an unfiltered query could admit a co-member's row too — but it only actually returns >1 row once two people are truly co-members of the same batch, which no earlier phase's E2E test happened to exercise at the moment `getOwnProfile()` ran. This phase's own membership-flow E2E test does, and it surfaced real `PGRST116` ("multiple rows") server errors. Fixed by adding the explicit `.eq("id", userData.user.id)` filter both places — never relying on RLS alone to do a WHERE clause's job.
+
+**Backend:** `features/memberships/schema.ts` (five Zod schemas; `change_member_role`'s `newRole` input excludes `'owner'` at the schema layer, not just the RPC); `actions.ts` (`approveMemberAction`, `rejectMemberAction`, `removeMemberAction`, `changeMemberRoleAction`, `transferOwnershipAction` — the last re-verifies the typed confirmation name server-side, never trusting the client-side match alone); `permissions.ts` extended with `canDecideJoinRequests`, `canRemoveMember`, `canAssignRole`, `canTransferOwnership`, `assignableRoles` (Layer 2 only, mirroring the RPCs' own ceiling rule).
+
+**Frontend:** `/batches/[batchId]/members` now shows a "Waiting for approval" queue (mod+ sees Approve/Decline; a plain member sees nothing — `canDecideJoinRequests` gate) above the active roster; `MemberRowActions` (client component) adds Remove (plain `window.confirm`, the "explicit confirmation step" tier), a role-change `<select>` filtered to roles the caller could actually assign, and — owner only — an expandable "Transfer ownership" control requiring the admin to **type the exact target display name** before the highest-tier confirmation unlocks (design.md §13-16's typed-confirmation requirement, built without a modal primitive this repo hasn't vendored yet). Every action calls `router.refresh()` on success — `revalidatePath` alone does not re-render an already-mounted client page, which the first E2E run caught directly (role/removal/approval changes were invisible without it until that fix).
+
+**Tests run (scoped to this phase, per this session's instructions — not a historical re-audit):**
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | **PASS** |
+| Typecheck | `pnpm typecheck` | **PASS** |
+| Production build | `pnpm build` | **PASS** |
+| Unit (new) | `vitest run --project unit tests/unit/membership-permissions.test.ts` | **PASS** — 15 tests |
+| Adversarial DB (new) | `vitest run --project db tests/db/memberships.test.ts` | **PASS** — 32 tests (the ceiling rule proven at every ceiling boundary: mod removes member ✅, admin removes moderator ✅, mod removes admin ❌, admin removes peer admin ❌; admin promotes member→moderator ✅, admin demotes moderator→member ✅, owner promotes member→admin ✅, admin attempting admin ❌, admin touching a peer admin ❌, moderator role-changing anyone ❌, `'owner'` never assignable via this RPC, no self-role-change; atomic ownership transfer with before/after audit; the exactly-one-owner partial unique index rejected directly, independent of any RPC; the new pending-review profile policy's own mod+/member/non-member cases) |
+| E2E (new flow only) | `playwright test tests/e2e/membership-management-flow.spec.ts --project=chromium-desktop` | **PASS** — approve → promote to moderator → remove, full round trip |
+| E2E (re-run, Phase 3A's flow — confirms the `getOwnProfile()` fix didn't regress it) | `playwright test tests/e2e/invite-join-flow.spec.ts --project=chromium-desktop` | **PASS** — both tests, no `PGRST116` noise |
+
+Not re-run this session (per instructions — scoped to this phase, not a historical audit): `pnpm audit`, the full historical adversarial suite (`invites.test.ts`, `batches.test.ts`, `profiles.test.ts`, etc.), and the full E2E suite. None of this phase's changes touched `batches`, `batch_invites`, or their existing policies.
+
+**Known, accepted:** moderator/member removal and role-change confirmations use `window.confirm` / a plain typed-text field rather than a vendored modal dialog (none exists in this repo yet) — functionally meets rules.md §5's confirmation-scaling requirement, but is visually a simplification of design.md §16's drawer/centered-modal language; a future UI-polish pass can swap the mechanism without touching the RPCs or Server Actions. Self-leave ("left" status) is not built — not in this phase's scope.
+
+### memory.md update
+
+Phase 3B complete; the audited action set (`member_approved`, `member_rejected`, `member_removed`, `role_changed`, `ownership_transferred`) is now live; the one-ceiling-comparison design and the two real defects (pending-review profile visibility, unfiltered `getOwnProfile`/`saveOwnProfileAction`) are recorded as durable fixes, not workarounds.
 
 ## Phase 3A — Invitations & Join (complete)
 
@@ -387,7 +424,7 @@ Per `phases.md`:
 - Phase 1 — Authentication & Profile — **COMPLETE** (see above)
 - Phase 2 — Batch Spaces — **COMPLETE** (see above)
 - Phase 3A — Invitations & Join — **COMPLETE** (see above)
-- Phase 3B — Membership Decisions & Roles
+- Phase 3B — Membership Decisions & Roles — **COMPLETE** (see above)
 - Phase 4A — Photo Upload Pipeline
 - Phase 4B — Video Constraints, Edit/Delete & Media Reliability
 - Phase 5A — Gallery & Memory Detail
@@ -398,7 +435,7 @@ Per `phases.md`:
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: Phase 3A, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2's and Phase 3A's migrations are both applied to the hosted dev project; every required Phase 3A gate has been executed and observed passing except `pnpm audit` (pre-existing `next` version, unrelated to this phase — see "Phase 3A — Invitations & Join (complete)" above); `docs/memory.md` is updated per phases.md's own instruction. **Nothing has been committed for Phase 2 or Phase 3A** — this session was told not to commit. Phase 3B begins only on explicit instruction.
+**Current implementation phase: Phase 3B, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2's, Phase 3A's, and Phase 3B's migrations are all applied to the hosted dev project; every Phase 3B gate scoped to this phase has been executed and observed passing; `docs/memory.md` is updated. **Nothing has been committed for Phase 2, 3A, or 3B** — this session was told not to commit. Phase 4A begins only on explicit instruction, and only once B1, Q4, R1, R2 are decided (none are yet — see "Known Issues / Open Decisions" below).
 
 ## Post-MVP Boundaries
 
@@ -487,11 +524,11 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Commit Phase 2 and Phase 3A**, then **Phase 3B — Membership Decisions & Roles** only on explicit instruction.
+**Commit Phase 2, Phase 3A, and Phase 3B**, then **Phase 4A — Photo Upload Pipeline** only on explicit instruction.
 
-Phase 2 and Phase 3A are both complete (see their sections above): migrations applied to the hosted dev project, every required gate executed and observed passing (Phase 3A's `pnpm audit` exception is pre-existing and documented above, not caused by this phase), `docs/memory.md` updated. Nothing has been committed for either phase yet — this session was told not to commit.
+Phase 2, Phase 3A, and Phase 3B are all complete (see their sections above). Nothing has been committed for any of the three yet — this session was told not to commit.
 
-Phase 3B's own prerequisite per `phases.md` is Phase 3A complete — true now. No decision gate blocks Phase 3B's start.
+**Phase 4A is gated, unlike 3B was.** Its hard prerequisites per `phases.md` — **B1 (EXIF/GPS), Q4 (image derivative strategy), R1 (signed-URL TTL), R2 (private-media-vs-optimizer delivery)** — are all still open (see "Known Issues / Open Decisions" below). None may be silently resolved; each updates its source document first. Do not begin Phase 4A until all four are decided.
 
 **Foundation configuration fact, corrected by measurement.** `supabase/config.toml` sets `auto_expose_new_tables = false`, which applies to the **local CLI stack only**. The hosted project does **not** behave that way: `ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated`/`service_role` full DML on new `public` tables and `EXECUTE` on new functions (B5). The earlier note that "each cloud project must be configured to match" was right to flag this — it is now confirmed that the cloud project does **not** match, and the required action is an explicit `REVOKE` in every migration (not a `PUBLIC` revoke, which does nothing here).
 
@@ -525,4 +562,4 @@ Every future session must:
 
 ---
 
-STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented. **Phase 3A / Prompt 15 ("Phase 3A" section) is COMPLETE** (2026-10-18): `batch_invites`, `invite_redemption_attempts`, `batch_members.invite_id`, and the `check_invite_rate_limit`/`validate_invite`/`redeem_invite`/`create_invite`/`revoke_invite` functions are live on the hosted `BatchVault-Dev` project; `features/invitations` and the `/invite` landing page are fully implemented. Every required gate (lint, typecheck, unit — 23, adversarial DB — 121 across 7 files, build, artifact scan, Playwright E2E — 38 passed/2 explicitly-named-skip) was executed against the real project and observed passing; `pnpm audit` fails on a pre-existing, unrelated `next` version (documented above, not fixed — out of this phase's scope); `docs/memory.md` is updated. **Nothing has been committed for Phase 2 or Phase 3A** — this session was told not to commit. **Next Task: commit Phase 2 and Phase 3A, then Phase 3B — Membership Decisions & Roles only on explicit instruction** (see "Next Task" above).
+STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented. **Phase 3A / Prompt 15 ("Phase 3A" section) is COMPLETE** (2026-10-18): `batch_invites`, `invite_redemption_attempts`, `batch_members.invite_id`, and the `check_invite_rate_limit`/`validate_invite`/`redeem_invite`/`create_invite`/`revoke_invite` functions are live on the hosted `BatchVault-Dev` project; `features/invitations` and the `/invite` landing page are fully implemented. **Phase 3B / Prompt 15 ("Phase 3B" section) is COMPLETE** (2026-10-18): `approve_member`/`reject_member`/`remove_member`/`change_member_role`/`transfer_ownership` and the `profiles_select_pending_review` policy are live on the hosted `BatchVault-Dev` project; `features/memberships`' write side and the members-page approval queue/role controls are fully implemented; a real latent bug in `getOwnProfile()`/`saveOwnProfileAction()` (unfiltered `profiles` queries relying on RLS alone) was found and fixed. Every gate scoped to Phase 3B (lint, typecheck, build, unit — 15 new, adversarial DB — 32 new, the new membership E2E flow, and a re-run of Phase 3A's own E2E flow to confirm no regression) was executed against the real project and observed passing; `docs/memory.md` is updated. **Nothing has been committed for Phase 2, 3A, or 3B** — this session was told not to commit. **Next Task: commit all three, then Phase 4A — Photo Upload Pipeline only on explicit instruction, and only once B1/Q4/R1/R2 are decided** (see "Next Task" above).

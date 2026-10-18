@@ -364,6 +364,58 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      approve_member: {
+        Args: { p_batch_id: string; p_target_profile_id: string }
+        Returns: {
+          batch_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          invite_id: string | null
+          invited_by: string | null
+          joined_at: string | null
+          profile_id: string
+          requested_at: string
+          role: Database["public"]["Enums"]["batch_role"]
+          status: Database["public"]["Enums"]["membership_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batch_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      change_member_role: {
+        Args: {
+          p_batch_id: string
+          p_new_role: Database["public"]["Enums"]["batch_role"]
+          p_target_profile_id: string
+        }
+        Returns: {
+          batch_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          invite_id: string | null
+          invited_by: string | null
+          joined_at: string | null
+          profile_id: string
+          requested_at: string
+          role: Database["public"]["Enums"]["batch_role"]
+          status: Database["public"]["Enums"]["membership_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batch_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       check_invite_rate_limit: {
         Args: { p_ip: string | null; p_profile_id: string | null }
         Returns: undefined
@@ -452,6 +504,54 @@ export type Database = {
           status: Database["public"]["Enums"]["membership_status"]
         }[]
       }
+      reject_member: {
+        Args: { p_batch_id: string; p_target_profile_id: string }
+        Returns: {
+          batch_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          invite_id: string | null
+          invited_by: string | null
+          joined_at: string | null
+          profile_id: string
+          requested_at: string
+          role: Database["public"]["Enums"]["batch_role"]
+          status: Database["public"]["Enums"]["membership_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batch_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      remove_member: {
+        Args: { p_batch_id: string; p_target_profile_id: string }
+        Returns: {
+          batch_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          invite_id: string | null
+          invited_by: string | null
+          joined_at: string | null
+          profile_id: string
+          requested_at: string
+          role: Database["public"]["Enums"]["batch_role"]
+          status: Database["public"]["Enums"]["membership_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batch_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       revoke_invite: {
         Args: { p_invite_id: string }
         Returns: {
@@ -481,6 +581,30 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      transfer_ownership: {
+        Args: { p_batch_id: string; p_new_owner_profile_id: string }
+        Returns: {
+          batch_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          id: string
+          invite_id: string | null
+          invited_by: string | null
+          joined_at: string | null
+          profile_id: string
+          requested_at: string
+          role: Database["public"]["Enums"]["batch_role"]
+          status: Database["public"]["Enums"]["membership_status"]
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "batch_members"
           isOneToOne: true
           isSetofReturn: false
         }

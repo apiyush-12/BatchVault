@@ -18,3 +18,9 @@ export interface MyMembership {
   role: BatchRole;
   status: MembershipStatus;
 }
+
+export type ActionResult<T = undefined> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+export const GENERIC_ERROR = "Something went wrong. Please try again.";
