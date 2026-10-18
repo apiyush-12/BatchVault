@@ -709,7 +709,7 @@ Reaching for the service role in these flows would be actively harmful: it disca
 **Legitimate service-role call sites in MVP** — operations that genuinely require *system* authority:
 
 1. **Supabase Auth admin operations that cannot be performed as the user.** Specifically, **account deletion** requires the Auth admin API to delete the `auth.users` record; a user cannot delete their own auth record through the ordinary client. This is the clearest legitimate case (§22).
-2. **Bounded cron and cleanup jobs** acting on rows across all batches with no user in the request: orphaned and rejected upload purging, retention reaping, invite retirement (architecture §13).
+2. **Deleting the backing Storage bytes for a rejected or orphaned upload** — both the synchronous path at finalize-time rejection (database.md §3.6, §24's object-first ordering) **and** the later bounded cron sweep across all batches with no user present (architecture §13) — plus retention reaping and invite retirement. A raw SQL `DELETE` on `storage.objects` does not trigger the backend's physical byte deletion; only the Storage API does, and ordinary members hold no Storage delete grant (§6.2) — so this operation needs a policy-exempt credential whether or not a user triggered it.
 3. **Operational backup, export and recovery tooling** run outside the request path by named operators (§26).
 
 **Deliberately removed from this list:** "ownership resolution", which appeared in an earlier draft and does not belong — ownership transfer is a user-initiated action inside one batch and is performed by the owner through the transfer function (§11), not by the system. The only ownership-adjacent case that could need system authority is resolving a batch left ownerless by account deletion, which is a subcase of (1) and should be designed as part of the B3 decision (§32), not assumed into the allowlist now.
@@ -993,6 +993,10 @@ So the MVP as currently specified **cannot strip EXIF server-side**. The options
 
 This needs a decision before launch. It is listed as a **blocker** in §32.
 
+**B1 — ✅ RESOLVED (Phase 4A).** **Server-side strip at finalize**, scoped narrowly: a JPEG object (the overwhelming real-world source of embedded GPS from phone cameras) has its EXIF `APP1` segment removed **at the byte-segment level, without decoding/re-encoding the image** — pixel data is untouched, so this is not a quality-affecting re-compression. `image/png`, `image/webp`, and `image/gif` are passed through unmodified in this phase (PNG/WebP/GIF EXIF-GPS embedding is rare in the phone-camera case this policy targets; tracked as a known, named residual gap, not silently assumed solved). The **untouched upload is discarded, never retained** — the stripped bytes become the one and only stored object; there is no second, privately-held unstripped copy.
+
+This is a **deliberate, narrow exception to two standing rules**, recorded here rather than silently worked around: (1) *originals are preserved unmodified* (project-context §9.10) — reconciled by treating "the original" as the post-strip bytes from the moment they are first accepted into the archive, never a separately-tracked unstripped predecessor; (2) *media bytes never proxy through the Next.js server* (architecture §8) — the finalize step downloads the object, strips it, and re-uploads it server-side specifically for this reason, bounded by the same size cap already enforced at finalize, so the exception is narrow and capped, not a general proxy. See architecture.md §8/§9 for the mechanism.
+
 **Facial recognition: never.** No automatic face detection, no clustering, no suggested tagging, no biometric derivation of any kind — permanently excluded by the PRD, not deferred. Any future person-tagging is manual only, and no schema affordance for automated recognition exists (database.md §1.3).
 
 ---
@@ -1199,9 +1203,9 @@ If the abuser is the batch owner, nobody inside the batch outranks them and no o
 
 ### Risks — accepted for MVP, with mitigations, worth revisiting
 
-**R1 — Signed URLs survive membership removal** until they expire (§8). Mitigation: short TTLs. Contradicts a strict reading of "removal is immediate", so the TTL choice is a security decision, not a performance one.
+**R1 — Signed URLs survive membership removal** until they expire (§8). Mitigation: short TTLs. Contradicts a strict reading of "removal is immediate", so the TTL choice is a security decision, not a performance one. **✅ RESOLVED (Phase 4A): 15 minutes** for batch-media signed URLs — long enough to comfortably cover a gallery session or load a memory detail page, short enough to bound post-removal exposure to a tight window. Applies to application-minted URLs only (§8.1's Option B caveat is unaffected: a member minting their own URL directly chooses their own expiry).
 
-**R2 — Private media vs. image optimization** (architecture risk #3). Whichever resolution is taken, a cached media response must never outlive the viewer's authorization. If an application media route is introduced, it is a new authorization surface requiring the full §5 treatment.
+**R2 — Private media vs. image optimization** (architecture risk #3). Whichever resolution is taken, a cached media response must never outlive the viewer's authorization. If an application media route is introduced, it is a new authorization surface requiring the full §5 treatment. **✅ RESOLVED (Phase 4A): skip the Next.js image optimizer for batch media.** Images render via a plain `<img>`/unoptimized `next/image` pointed at a short-lived (R1) signed URL; no application media route is introduced, so no new authorization surface is created. Pairs with Q4's resolution (database.md Q4) — Storage transformations are requested by URL parameter on the same signed URL.
 
 **R3 — No MFA and no step-up authentication** (§2). Batch deletion and ownership transfer are irreversible actions protected only by a session. Re-authentication before destructive actions is the cheap partial mitigation.
 

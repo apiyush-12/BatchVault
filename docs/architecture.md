@@ -226,10 +226,21 @@ Direct-to-Storage upload. Media bytes never proxy through the Next.js server (av
 
 4. Client calls a Server Action: "finalize memory", referencing the
    identifier from step 2 (not a path).
-   Server: re-verifies membership → confirms the object exists at the path
-   it issued → enforces actual object size and content type against policy →
+   Server: **(Phase 4A, B1-resolved exception to "bytes never proxy
+   through the server" — the one deliberate exception, bounded by the
+   same size cap already enforced below)** for a JPEG object, downloads
+   the uploaded bytes, strips the EXIF `APP1` segment (GPS/location) with
+   no re-encode, and re-uploads the result to the same server-issued path
+   (overwrite of the caller's own still-`pending` object, the same
+   permission the original upload already required — security.md §6.2).
+   Other allowed image types pass through unmodified this phase
+   (security.md §27 B1). Then: re-verifies membership → confirms the
+   object exists at the path it issued → enforces actual object size and
+   content type against policy, read from Storage's own object metadata →
    writes the memory + media metadata (caption, event name, date, uploader)
-   in one transaction.
+   in one transaction. A rejection deletes the object via the Storage API
+   (not a bare SQL `DELETE` on `storage.objects`, which would orphan the
+   backing bytes) before the row is removed.
 
 5. Server revalidates the batch gallery cache tag. Memory appears.
 ```
@@ -249,11 +260,9 @@ Failure handling:
 The gallery is the product's core surface (PRD §9.13) and is mobile-first, so it must never download full-resolution originals.
 
 MVP approach:
-- **Originals are preserved unmodified.** Preservation is a product promise (project-context §9.10); the original upload is never overwritten by a derivative.
-- **Derivatives are generated on demand and cached**, in one of two ways, decided at implementation time:
-  - **(a) Supabase Storage image transformations** — request a resized/quality-adjusted rendition by URL parameter. Simplest, no pipeline to own. Caveat: this is a paid-plan capability, so it is a cost/plan dependency, not a free default.
-  - **(b) Generate a small set of fixed derivatives at finalize time** (thumbnail, gallery, detail) via a server-side image step, stored alongside the original. More code and more storage, no plan dependency.
-- **`next/image`** handles responsive `sizes`, lazy loading, and modern formats. Note the real constraint: the Next.js image optimizer keys its cache on URL, and signed URLs rotate — so signed URLs are poor optimizer inputs. Resolution is either to serve derivatives through an application route that performs the authorization check and streams the object under a stable, cacheable-per-user URL, or to let Storage transformations serve the resize and skip the Next optimizer for batch media. This is called out as a known risk (see summary).
+- **Originals are preserved unmodified**, with one narrow, named exception (security.md §27 B1, resolved): a JPEG's EXIF `APP1` segment is stripped at finalize, at the byte-segment level with no re-encode, before the object is ever accepted as "the" stored original — there is no separate unstripped predecessor retained. No other processing mutates the original, and no derivative overwrites it.
+- **Derivatives — RESOLVED (Q4, database.md): option (a), Supabase Storage image transformations** — requested by URL parameter on the same signed URL. No pipeline to own, no `media_assets` schema change. The paid-plan dependency this carries is an accepted cost.
+- **`next/image`** handles responsive `sizes`, lazy loading, and modern formats where used elsewhere in the app, but **batch media specifically skips the Next.js image optimizer (R2, resolved)**: the optimizer keys its cache on URL and signed URLs rotate, so it is a poor fit, and introducing an application media route to work around it would be a new authorization surface this phase does not need. Batch media renders via `next/image unoptimized` (or a plain `<img>`) pointed at a short-lived (15-minute, R1) signed URL carrying the Storage transformation parameters directly.
 - **Blur/placeholder**: a tiny placeholder is derived at finalize time and stored in metadata, so the gallery has no layout shift and feels instant on mobile.
 - Explicit anti-goal: no image processing on the client as the authoritative step, and no processing that mutates the original.
 

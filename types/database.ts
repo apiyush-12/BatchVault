@@ -297,6 +297,168 @@ export type Database = {
           },
         ]
       }
+      media_assets: {
+        Row: {
+          batch_id: string
+          blur_placeholder: string | null
+          byte_size: number | null
+          client_reported_duration_seconds: number | null
+          content_hash: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          height: number | null
+          id: string
+          kind: Database["public"]["Enums"]["media_kind"]
+          memory_id: string | null
+          mime_type: string | null
+          original_filename: string | null
+          position: number
+          poster_media_asset_id: string | null
+          status: Database["public"]["Enums"]["media_status"]
+          storage_bucket: string
+          storage_path: string
+          updated_at: string
+          width: number | null
+        }
+        Insert: {
+          batch_id: string
+          blur_placeholder?: string | null
+          byte_size?: number | null
+          client_reported_duration_seconds?: number | null
+          content_hash?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          height?: number | null
+          id?: string
+          kind: Database["public"]["Enums"]["media_kind"]
+          memory_id?: string | null
+          mime_type?: string | null
+          original_filename?: string | null
+          position?: number
+          poster_media_asset_id?: string | null
+          status?: Database["public"]["Enums"]["media_status"]
+          storage_bucket: string
+          storage_path: string
+          updated_at?: string
+          width?: number | null
+        }
+        Update: {
+          batch_id?: string
+          blur_placeholder?: string | null
+          byte_size?: number | null
+          client_reported_duration_seconds?: number | null
+          content_hash?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          height?: number | null
+          id?: string
+          kind?: Database["public"]["Enums"]["media_kind"]
+          memory_id?: string | null
+          mime_type?: string | null
+          original_filename?: string | null
+          position?: number
+          poster_media_asset_id?: string | null
+          status?: Database["public"]["Enums"]["media_status"]
+          storage_bucket?: string
+          storage_path?: string
+          updated_at?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_assets_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_assets_memory_fkey"
+            columns: ["memory_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id", "batch_id"]
+          },
+          {
+            foreignKeyName: "media_assets_poster_fkey"
+            columns: ["poster_media_asset_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id", "batch_id"]
+          },
+        ]
+      }
+      memories: {
+        Row: {
+          batch_id: string
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          event_name: string | null
+          id: string
+          occurred_on: string
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          event_name?: string | null
+          id?: string
+          occurred_on: string
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          event_name?: string | null
+          id?: string
+          occurred_on?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memories_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memories_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invite_redemption_attempts: {
         Row: {
           attempted_at: string
@@ -492,9 +654,76 @@ export type Database = {
           use_count: number
         }[]
       }
+      finalize_memory: {
+        Args: {
+          p_caption: string | null
+          p_event_name: string | null
+          p_media_asset_id: string
+          p_occurred_on: string
+        }
+        Returns: {
+          batch_id: string
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          event_name: string | null
+          id: string
+          occurred_on: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "memories"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       my_batch_role: {
         Args: { p_batch_id: string }
         Returns: Database["public"]["Enums"]["batch_role"]
+      }
+      preallocate_media: {
+        Args: {
+          p_batch_id: string
+          p_declared_mime_type: string
+          p_declared_size: number
+          p_original_filename?: string | null
+        }
+        Returns: {
+          batch_id: string
+          blur_placeholder: string | null
+          byte_size: number | null
+          client_reported_duration_seconds: number | null
+          content_hash: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          height: number | null
+          id: string
+          kind: Database["public"]["Enums"]["media_kind"]
+          memory_id: string | null
+          mime_type: string | null
+          original_filename: string | null
+          position: number
+          poster_media_asset_id: string | null
+          status: Database["public"]["Enums"]["media_status"]
+          storage_bucket: string
+          storage_path: string
+          updated_at: string
+          width: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "media_assets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      purge_rejected_media: {
+        Args: { p_media_asset_id: string }
+        Returns: undefined
       }
       redeem_invite: {
         Args: { p_ip?: string | null; p_token_hash: string }
@@ -676,6 +905,8 @@ export type Database = {
       batch_role: "member" | "moderator" | "admin" | "owner"
       batch_visibility: "private"
       join_policy: "invite_only_auto_approve" | "invite_only_requires_approval"
+      media_kind: "image" | "video"
+      media_status: "pending" | "ready" | "rejected"
       membership_status: "pending" | "active" | "rejected" | "removed" | "left"
     }
     CompositeTypes: {
@@ -838,6 +1069,8 @@ export const Constants = {
         "invite_only_auto_approve",
         "invite_only_requires_approval",
       ],
+      media_kind: ["image", "video"],
+      media_status: ["pending", "ready", "rejected"],
       membership_status: ["pending", "active", "rejected", "removed", "left"],
     },
   },

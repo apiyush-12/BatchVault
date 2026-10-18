@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Settings, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon, Settings, UserPlus, Users } from "lucide-react";
 
 import { NotAvailableState } from "@/components/ui/not-available";
 import { getBatchById } from "@/features/batches/queries";
@@ -70,6 +70,14 @@ export default async function BatchHomePage({
       )}
 
       <nav className="flex flex-col gap-3">
+        <Link
+          href={`/batches/${batch.id}/memories`}
+          className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
+        >
+          <ImageIcon aria-hidden="true" className="size-5 text-primary" />
+          <span className="text-body font-medium text-foreground">Memories</span>
+        </Link>
+
         <Link
           href={`/batches/${batch.id}/members`}
           className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"

@@ -1249,7 +1249,7 @@ Post-MVP, designed but **not created**: `albums`, `album_memories`, `memory_peop
 
 **Q3 — Owner account deletion.** The schema enforces *at most* one owner but cannot enforce *at least* one. When an owner deletes their account, does the system block deletion until transfer, auto-promote the longest-serving admin, or allow a temporarily ownerless batch that admins can claim? This is the most consequential open item, because it is the one that can leave a batch structurally stuck.
 
-**Q4 — Image derivatives.** Blocked on architecture §9's (a)-vs-(b) choice. Under (b), derivatives become `media_assets` rows with a `derived_from_media_asset_id` self-FK; under (a), no schema change. Not modelled speculatively.
+**Q4 — Image derivatives.** **✅ RESOLVED (Phase 4A): option (a), Supabase Storage image transformations.** Requested by URL parameter on the same signed URL at read time; no derivative-asset rows, no `derived_from_media_asset_id` self-FK, no schema change — the schema stays exactly as this section already describes. Chosen for Phase 4A's own simplicity (no pipeline to own); the paid-plan dependency this option carries (architecture §9) is accepted.
 
 **Q5 — Distinguishing stated vs defaulted `occurred_on`.** Deliberately not solved with a second nullable date column. If the UI must show "date not specified", the cheapest honest fix is a boolean `occurred_on_is_estimated`, not a parallel date.
 

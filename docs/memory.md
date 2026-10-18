@@ -14,7 +14,9 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
-**Phase 3B — Membership Decisions & Roles: COMPLETE** (2026-10-18). See "Phase 3B — Membership Decisions & Roles (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+**Phase 4A — Photo Upload Pipeline: COMPLETE** (2026-10-18). See "Phase 4A — Photo Upload Pipeline (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+
+**Phase 3B — Membership Decisions & Roles: COMPLETE** (2026-10-18). See "Phase 3B — Membership Decisions & Roles (complete)" below for full detail.
 
 **Phase 3A — Invitations & Join: COMPLETE** (2026-10-18). See "Phase 3A — Invitations & Join (complete)" below for full detail.
 
@@ -109,6 +111,57 @@ A second, smaller fix from the same gate: the artifact scanner's own heuristic f
 ### memory.md update
 
 Phase 1 complete; `profiles` shipped with its writable-column set (`display_name`, `bio`); co-member avatar visibility deferred to Phase 2, per phases.md's own instruction for this update.
+
+## Phase 4A — Photo Upload Pipeline (complete)
+
+**Status: COMPLETE.** Implemented per Prompt 16 (`16_PHASE_4_MEMORIES_MEDIA.md`) and `phases.md` Phase 4A. **Four prerequisite decisions (B1, Q4, R1, R2) were resolved first**, in their source documents, before any migration was written (CLAUDE.md rule 5) — see below. No video, edit, delete, or gallery was built (all explicitly out of scope; Phase 4B/5A).
+
+### Decisions resolved (recorded in their source documents, not invented here)
+
+- **B1 (EXIF/GPS, security.md §27):** server-side strip at finalize. Scoped to JPEG only (the dominant real-world case) — hand-rolled, zero-dependency, byte-segment-level removal of the EXIF `APP1` segment with no re-encode (`features/media/exif.ts`), not a third-party package. PNG/WebP/GIF pass through unmodified — a named, accepted gap. The untouched upload is never retained; the stripped bytes become the one stored object.
+- **Q4 (image derivatives, database.md Q4):** option (a), Supabase Storage image transformations by URL parameter. No schema change, no derivative rows.
+- **R1 (signed-URL TTL, security.md R1):** 15 minutes for batch media.
+- **R2 (delivery design, security.md R2):** skip the Next.js image optimizer for batch media; no new application media route.
+- A **new, narrow service-role allowlist entry** (security.md §12, item 2 reworded) was required: deleting a rejected upload's backing Storage bytes needs a policy-exempt credential, since a raw SQL `DELETE` on `storage.objects` does not trigger physical byte deletion and ordinary members hold no Storage delete grant (§6.2).
+
+### What was implemented
+
+**Database — one migration** (`20261018160000_phase4a_memories_media.sql`), applied via direct `pg` connection, hand-extended into `types/database.ts`:
+
+- `memories` and `media_assets` (database.md §3.5–3.6; RLS enabled+forced; the gallery index, the readiness/kind-matches-mime CHECKs, the composite same-batch FKs including the poster self-FK declared now for Phase 4B's benefit, the deferrable `UNIQUE(memory_id, position)`). **Zero direct client INSERT/UPDATE/DELETE grant on either table** — a memory is created only by `finalize_memory`; author edit is explicitly Phase 4B scope.
+- `preallocate_media(batch_id, declared_mime_type, declared_size, original_filename)` — membership-checked, image-only this phase, composes `{batch_id}/{id}` server-side, 15 MiB cap (this phase's own chosen figure, not fixed by any doc, revisitable).
+- `finalize_memory(media_asset_id, caption, event_name, occurred_on)` — idempotent; reads `storage.objects.metadata` directly for the Storage-observed mime/size (no second Storage API round-trip needed); writes memory+media in one transaction. **A real Postgres semantics bug caught and fixed before any test depended on it**: the rejection branches originally did `UPDATE ... SET status='rejected'` then `RAISE EXCEPTION` — but a statement that raises has **no lasting side effects at all**, including its own prior writes within that same statement, so the 'rejected' write was silently undone every time. Fixed by `RETURN NULL` instead of raising for exactly those two branches (Storage-metadata-invalid cases) — NULL is a legitimate, distinct outcome for a composite-returning function, and the Server Action distinguishes it from the ordinary (still-raising) authorization failures by checking `data === null`.
+- `purge_rejected_media(media_asset_id)` — hard-deletes the caller's own already-rejected row, called only after the Storage API confirms the object is gone.
+- Storage policies for the `batch-media` bucket (security.md §6.2, §7.1): insert/update scoped to a single server-preallocated pending row the caller owns (covers both the original browser upload and the EXIF-strip step's own overwrite-reupload); select admits `ready` media only for an active member whose memory is visible, plus the uploader's own `pending` row; **no delete policy for any client role** — rejected-object Storage deletion runs with service-role authority instead (the new allowlist entry above).
+
+**Backend:** `features/media/` (`exif.ts`, `schema.ts`, `types.ts`, `actions.ts` — `requestPhotoUploadAction`/`finalizeMemoryAction`, `queries.ts`); `features/memories/` (`types.ts`, `queries.ts` — `listRecentMemories`, the deliberately unpolished "minimal verification list," architecture §8 step 5). `finalizeMemoryAction` is the one place bytes proxy through the Next.js server (the B1 exception) — it downloads the uploaded object, strips EXIF for JPEG, re-uploads to the same path using the uploader's own still-pending-object permission, then calls `finalize_memory`; on rejection it deletes the Storage object via the service-role client and calls `purge_rejected_media`.
+
+**Frontend:** `/batches/[batchId]/upload` (photo picker, caption/event/date form, honest upload/finalize progress states) and `/batches/[batchId]/memories` (the verification list — a simple grid, no pagination, no grouping). Both are plain dedicated pages, not a drawer/sheet overlay — no such primitive is vendored in this repo yet, the same simplification Phase 3B's confirmation controls recorded; a future UI-polish pass can move the upload flow into a drawer without touching the Server Actions. Batch home gained a "Memories" link.
+
+**Tests run (scoped to this phase):**
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | **PASS** |
+| Typecheck | `pnpm typecheck` | **PASS** |
+| Production build | `pnpm build` | **PASS** |
+| Unit (new) | `tests/unit/exif.test.ts` | **PASS** — 7 tests (segment removal, non-JPEG/malformed fail-safe pass-through, scan-data byte-stuffing left untouched) |
+| Adversarial DB/Storage (new) | `tests/db/media.test.ts` | **PASS** — 30 tests, real HTTP against the Storage REST API with real bearer tokens for the authorization cases (ready/pending/rejected visibility, cross-batch and non-member refusal, upload-to-unpreallocated-path refusal, upload-over-another-member's-pending-id refusal, overwrite-ready-object refusal, no-delete-policy-for-any-role), plus SQL-level RPC tests for `preallocate_media`/`finalize_memory` (idempotency, Storage-observed-size/type enforcement from a REAL uploaded object — not faked metadata, since Supabase blocks direct SQL writes to `storage.objects` — ownership/membership/anon refusal, the no-direct-DML-at-all check on `memories`) |
+| E2E (new flow only) | `tests/e2e/photo-upload-flow.spec.ts` | **PASS** — full round trip: sign in → create batch → upload a photo with caption/event → lands in the verification list |
+
+Not re-run this session (scoped to this phase, per instructions): `pnpm audit` (no dependency changes — the EXIF stripper is zero-dependency by design) and the full historical DB/E2E suites unrelated to this phase.
+
+**Known, accepted, honestly documented:**
+
+- **R9 (Storage response headers) was NOT verified this session** — phases.md names this as part of Phase 4A's own "Definition of done," but it was not executed (no HTTP header inspection against the real Storage origin was performed). This is a real gap against the phase's own stated scope, carried forward rather than silently claimed done; it remains a hard Phase 9 release gate regardless.
+- EXIF stripping covers JPEG only; PNG/WebP/GIF are unmodified (named above).
+- Blur placeholders are not generated in this phase (`media_assets.blur_placeholder` stays NULL for every row) — deferred to Phase 5A, the first phase that actually needs one for the real gallery; the "minimal verification list" does not.
+- The 15 MiB image cap and the 20-attempts/15-minute-style numeric choices elsewhere are this implementation's own figures, not fixed by any source document, and are revisitable without a schema change.
+- `width`/`height` are never measured or populated (no image is opened/decoded) — both stay NULL, consistent with ADR-08a.
+
+### memory.md update
+
+Phase 4A complete; B1/Q4/R1/R2 resolved and recorded in their source documents; `memories`/`media_assets` and the three privileged RPCs are live; the statement-level-rollback-on-raise defect (and its fix) is recorded as a durable lesson for any future RPC that needs to persist a row transition on an otherwise-failing path.
 
 ## Phase 3B — Membership Decisions & Roles (complete)
 
@@ -395,7 +448,7 @@ Final SQL function names and signatures are an implementation decision — not f
 
 ## Database Summary
 
-MVP tables: `profiles` (**implemented, Phase 1**), `batches`, `batch_members`, `audit_logs` (**implemented, Phase 2** — `batches.cover_media_asset_id` still deliberately deferred to Phase 4A), `batch_invites` (**implemented, Phase 3A** — `batch_members.invite_id` added by this phase too). Planned, not yet implemented: `memories`, `media_assets`, `comments`, `reactions`, `reports`. **Implementation-only, not a `database.md` MVP table:** `invite_redemption_attempts` (Phase 3A) — rate-limit bookkeeping only, see "Phase 3A" above.
+MVP tables: `profiles` (**implemented, Phase 1**), `batches`, `batch_members`, `audit_logs` (**implemented, Phase 2** — `batches.cover_media_asset_id` still deliberately deferred, now to Phase 4B/5A whenever a cover-setting UI arrives), `batch_invites` (**implemented, Phase 3A** — `batch_members.invite_id` added by this phase too), `memories`, `media_assets` (**implemented, Phase 4A** — image only; video/poster columns exist per the documented schema but are unpopulated until Phase 4B). Planned, not yet implemented: `comments`, `reactions`, `reports`. **Implementation-only, not a `database.md` MVP table:** `invite_redemption_attempts` (Phase 3A) — rate-limit bookkeeping only, see "Phase 3A" above.
 
 Key schema ideas to remember:
 
@@ -425,7 +478,7 @@ Per `phases.md`:
 - Phase 2 — Batch Spaces — **COMPLETE** (see above)
 - Phase 3A — Invitations & Join — **COMPLETE** (see above)
 - Phase 3B — Membership Decisions & Roles — **COMPLETE** (see above)
-- Phase 4A — Photo Upload Pipeline
+- Phase 4A — Photo Upload Pipeline — **COMPLETE** (see above)
 - Phase 4B — Video Constraints, Edit/Delete & Media Reliability
 - Phase 5A — Gallery & Memory Detail
 - Phase 5B — Timeline & Event Grouping
@@ -435,7 +488,7 @@ Per `phases.md`:
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: Phase 3B, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2's, Phase 3A's, and Phase 3B's migrations are all applied to the hosted dev project; every Phase 3B gate scoped to this phase has been executed and observed passing; `docs/memory.md` is updated. **Nothing has been committed for Phase 2, 3A, or 3B** — this session was told not to commit. Phase 4A begins only on explicit instruction, and only once B1, Q4, R1, R2 are decided (none are yet — see "Known Issues / Open Decisions" below).
+**Current implementation phase: Phase 4A, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2 through Phase 4A's migrations are all applied to the hosted dev project; B1/Q4/R1/R2 are resolved (see above); every Phase 4A gate scoped to this phase has been executed and observed passing except the R9 header-verification task (not performed this session — see above); `docs/memory.md` is updated. **Nothing has been committed for Phase 2, 3A, 3B, or 4A** — this session was told not to commit. Phase 4B begins only on explicit instruction.
 
 ## Post-MVP Boundaries
 
@@ -471,12 +524,12 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 - **B6 — ✅ RESOLVED 2026-09-12.** `pnpm test:db` now executes against the hosted project via a `DATABASE_URL` in the git-ignored `.env.local`: **26 passed, 0 failed, 0 skipped**, harness reporting `kind: "supabase"`. The harness resolves the Supabase API URL and anon key from the **documented** names (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), loading `.env.local` only for keys absent from the environment, and **fails loudly rather than defaulting to localhost** when `DATABASE_URL` is remote but no API URL is configured. CI now exports those same documented names, so there is no second secret convention.
 
 **C — Blocks a later implementation phase**
-- **Q1** — `join_policy` default and whether it's owner-configurable → Phase 2 / 3A.
-- **B1** — EXIF/GPS handling → must be decided before Phase 4A (two of the four options change the upload pipeline); also a release blocker (D).
-- **Q4** — image derivative strategy (Storage transformations vs. generated derivatives) → Phase 4A.
-- **R1** — signed-URL TTL value → Phase 4A.
-- **R2** — private-media-vs-image-optimizer delivery design → Phase 4A, re-verified 5A.
-- **R6** — HEIC product behavior → Phase 4A UX, revisited Phase 9.
+- **Q1** — `join_policy` default and whether it's owner-configurable → Phase 2 / 3A. ✅ RESOLVED (Phase 2).
+- **B1** — EXIF/GPS handling. ✅ RESOLVED (Phase 4A): server-side strip at finalize, JPEG only (security.md §27). Still a release-gate verification item (D) — the strip's correctness against real-world phone photos has not been independently re-audited post-implementation.
+- **Q4** — image derivative strategy. ✅ RESOLVED (Phase 4A): (a) Storage transformations (database.md Q4).
+- **R1** — signed-URL TTL value. ✅ RESOLVED (Phase 4A): 15 minutes (security.md R1).
+- **R2** — private-media-vs-image-optimizer delivery design. ✅ RESOLVED (Phase 4A): skip the Next optimizer (security.md R2); still due for re-verification in Phase 5A per its own original note.
+- **R6** — HEIC product behavior → Phase 4A UX, revisited Phase 9. **Not resolved this session** — HEIC remains outside the Phase 4A allowlist (image/jpeg, png, webp, gif only); no product-facing UX decision for iPhone users was made.
 - **Q5** — stated vs. defaulted `occurred_on`, if ever needed → Phase 4A/5B (may resolve as "no change").
 - **PRD #7** — member memory edit/delete rights and any time limit → Phase 4B.
 - **Q2** — reaction `kind` allowlist → Phase 6.
@@ -524,11 +577,11 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Commit Phase 2, Phase 3A, and Phase 3B**, then **Phase 4A — Photo Upload Pipeline** only on explicit instruction.
+**Commit Phase 2, Phase 3A, Phase 3B, and Phase 4A**, then **Phase 4B — Video Constraints, Edit/Delete & Media Reliability** only on explicit instruction.
 
-Phase 2, Phase 3A, and Phase 3B are all complete (see their sections above). Nothing has been committed for any of the three yet — this session was told not to commit.
+Phase 2 through Phase 4A are all complete (see their sections above). Nothing has been committed yet — this session was told not to commit.
 
-**Phase 4A is gated, unlike 3B was.** Its hard prerequisites per `phases.md` — **B1 (EXIF/GPS), Q4 (image derivative strategy), R1 (signed-URL TTL), R2 (private-media-vs-optimizer delivery)** — are all still open (see "Known Issues / Open Decisions" below). None may be silently resolved; each updates its source document first. Do not begin Phase 4A until all four are decided.
+Phase 4B's own prerequisites per `phases.md`: Phase 4A complete (true now), **PRD #7 decided** (member memory edit/delete rights and any time limit — still open, see "Known Issues" above) and **R6 decided** (HEIC UX — still open). Do not begin Phase 4B until those are decided.
 
 **Foundation configuration fact, corrected by measurement.** `supabase/config.toml` sets `auto_expose_new_tables = false`, which applies to the **local CLI stack only**. The hosted project does **not** behave that way: `ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated`/`service_role` full DML on new `public` tables and `EXECUTE` on new functions (B5). The earlier note that "each cloud project must be configured to match" was right to flag this — it is now confirmed that the cloud project does **not** match, and the required action is an explicit `REVOKE` in every migration (not a `PUBLIC` revoke, which does nothing here).
 
@@ -562,4 +615,4 @@ Every future session must:
 
 ---
 
-STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented. **Phase 3A / Prompt 15 ("Phase 3A" section) is COMPLETE** (2026-10-18): `batch_invites`, `invite_redemption_attempts`, `batch_members.invite_id`, and the `check_invite_rate_limit`/`validate_invite`/`redeem_invite`/`create_invite`/`revoke_invite` functions are live on the hosted `BatchVault-Dev` project; `features/invitations` and the `/invite` landing page are fully implemented. **Phase 3B / Prompt 15 ("Phase 3B" section) is COMPLETE** (2026-10-18): `approve_member`/`reject_member`/`remove_member`/`change_member_role`/`transfer_ownership` and the `profiles_select_pending_review` policy are live on the hosted `BatchVault-Dev` project; `features/memberships`' write side and the members-page approval queue/role controls are fully implemented; a real latent bug in `getOwnProfile()`/`saveOwnProfileAction()` (unfiltered `profiles` queries relying on RLS alone) was found and fixed. Every gate scoped to Phase 3B (lint, typecheck, build, unit — 15 new, adversarial DB — 32 new, the new membership E2E flow, and a re-run of Phase 3A's own E2E flow to confirm no regression) was executed against the real project and observed passing; `docs/memory.md` is updated. **Nothing has been committed for Phase 2, 3A, or 3B** — this session was told not to commit. **Next Task: commit all three, then Phase 4A — Photo Upload Pipeline only on explicit instruction, and only once B1/Q4/R1/R2 are decided** (see "Next Task" above).
+STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented. **Phase 3A / Prompt 15 ("Phase 3A" section) is COMPLETE** (2026-10-18): `batch_invites`, `invite_redemption_attempts`, `batch_members.invite_id`, and the `check_invite_rate_limit`/`validate_invite`/`redeem_invite`/`create_invite`/`revoke_invite` functions are live on the hosted `BatchVault-Dev` project; `features/invitations` and the `/invite` landing page are fully implemented. **Phase 3B / Prompt 15 ("Phase 3B" section) is COMPLETE** (2026-10-18): `approve_member`/`reject_member`/`remove_member`/`change_member_role`/`transfer_ownership` and the `profiles_select_pending_review` policy are live on the hosted `BatchVault-Dev` project; `features/memberships`' write side and the members-page approval queue/role controls are fully implemented; a real latent bug in `getOwnProfile()`/`saveOwnProfileAction()` (unfiltered `profiles` queries relying on RLS alone) was found and fixed. Every gate scoped to Phase 3B (lint, typecheck, build, unit — 15 new, adversarial DB — 32 new, the new membership E2E flow, and a re-run of Phase 3A's own E2E flow to confirm no regression) was executed against the real project and observed passing; `docs/memory.md` is updated. **Phase 4A / Prompt 16 is COMPLETE** (2026-10-18): B1 (EXIF/GPS — server-side JPEG strip at finalize), Q4 (Storage transformations), R1 (15-minute signed-URL TTL), and R2 (skip the Next optimizer) were all resolved in their source documents before implementation; `memories`, `media_assets`, and the `preallocate_media`/`finalize_memory`/`purge_rejected_media` RPCs are live on the hosted `BatchVault-Dev` project; `features/media` and `features/memories` are implemented; `/batches/[batchId]/upload` and `/batches/[batchId]/memories` exist. A real Postgres statement-level-rollback-on-raise defect in `finalize_memory`'s rejection path was found and fixed. Every gate scoped to Phase 4A (lint, typecheck, build, 7 new unit tests, 30 new adversarial DB/Storage tests over real HTTP, 1 new E2E upload flow) was executed and observed passing, except the R9 Storage-response-header verification task, not performed this session (still a hard Phase 9 release gate). **Nothing has been committed for Phase 2, 3A, 3B, or 4A** — this session was told not to commit. **Next Task: commit all four, then Phase 4B — Video Constraints, Edit/Delete & Media Reliability only on explicit instruction, and only once PRD #7 and R6 are decided** (see "Next Task" above).
