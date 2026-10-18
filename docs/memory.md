@@ -14,7 +14,9 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
-**Phase 2 — Batch Spaces: COMPLETE** (2026-09-26). See "Phase 2 — Batch Spaces (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+**Phase 3A — Invitations & Join: COMPLETE** (2026-10-18). See "Phase 3A — Invitations & Join (complete)" below for full detail. **Nothing has been committed** — this session was told not to commit.
+
+**Phase 2 — Batch Spaces: COMPLETE** (2026-09-26). See "Phase 2 — Batch Spaces (complete)" below for full detail.
 
 **Correction (2026-09-26 session):** the note below saying Phase 0 was "pending only its git checkpoint" was itself committed in `c8ae566 chore: complete phase 0 foundation` — i.e. the file said "not yet committed" inside the commit that committed it. **Phase 0 is in fact COMPLETE**: the commit exists, `git log` confirms it, and every gate recorded below as passing was passing at that commit. This paragraph corrects that stale self-reference; nothing about Phase 0's substance changes.
 
@@ -105,6 +107,62 @@ A second, smaller fix from the same gate: the artifact scanner's own heuristic f
 ### memory.md update
 
 Phase 1 complete; `profiles` shipped with its writable-column set (`display_name`, `bio`); co-member avatar visibility deferred to Phase 2, per phases.md's own instruction for this update.
+
+## Phase 3A — Invitations & Join (complete)
+
+**Status: COMPLETE.** Implemented per Prompt 15 (`15_PHASE_3_INVITES_JOIN.md`, "Phase 3A" section) and `phases.md` Phase 3A. Phase 2 was already complete; Q1/PRD #1–2 were already resolved (Phase 2). **Only Phase 3A was built — no Phase 3B (membership decisions, roles, approval UI) work was done**, per the phase's own STOP boundary.
+
+### What was implemented
+
+**Database — three migrations applied to the hosted dev project via a direct `pg` connection** (the `supabase` CLI's `--linked` network calls to `api.supabase.com` failed with a transport error in this session's sandbox — see "Known issues" below — so migrations were applied the same way Phase 1's session did, and `types/database.ts` was hand-extended from the live schema rather than CLI-generated, for the same reason):
+
+- `20261018140000_phase3a_batch_invites.sql` — `batch_invites` (database.md §3.4; RLS enabled+forced in the same migration; `UNIQUE(token_hash)`, `UNIQUE(id, batch_id)`; zero INSERT/UPDATE/DELETE grant to any client role — RPC-only, matching `batches`/`batch_members`; **column-level `SELECT` grant deliberately excludes `token_hash`**, security.md §9; admin+-of-that-batch SELECT policy via `my_batch_role(batch_id) >= 'admin'`). Also adds `batch_members.invite_id` (database.md §3.3, deliberately deferred by Phase 2) with its composite FK to `batch_invites(id, batch_id)` and `ON DELETE SET NULL (invite_id)`.
+- `20261018140100_phase3a_invite_rate_limiting.sql` — `invite_redemption_attempts`: a small, append-only bookkeeping table for security.md §17's "Invite redemption — IP and account" rate-limit requirement. **This is not a `database.md` MVP table** — no source document fixes a rate-limiting mechanism, the same latitude rules.md §1.3 gives RPC names/signatures — so this is a narrow, documented implementation choice to satisfy an already-written requirement, not a new product/schema decision. RLS enabled+forced; zero client-role grants at all (same posture as `audit_logs`); written/read only from inside the two functions that need it, which run as the `BYPASSRLS`-holding owner.
+- `20261018140200_phase3a_invite_rpcs.sql` — five functions, all `SECURITY DEFINER`, schema-qualified, pinned empty `search_path`, no dynamic SQL: `check_invite_rate_limit(ip, profile_id)` (private helper, no client grant at all — prunes rows older than 1 day, then refuses with the SAME generic exception as an invalid token once 20 attempts exist in a trailing 15-minute window keyed by IP or account, security.md §17's explicit "must not distinguish wrong-token from too-many-attempts"); `validate_invite(token_hash, ip)` (the "deliberately minimal unauthenticated read for invite landing" security.md §5.4 already names — batch name only, after validation; **granted to `anon` AND `authenticated`**, the one deliberate exception to this phase's authenticated-only default, since a recipient has not necessarily signed in yet, PRD Journey C; mutates nothing); `redeem_invite(token_hash, ip)` (authenticated only; locks the invite row `FOR UPDATE` before checking/incrementing `use_count`, database.md §3.4's documented concurrency requirement; `role` is always hard-coded `'member'`; idempotent re-redemption of an already active/pending row does not double-charge `use_count`; a `removed`/`left` member redeeming a fresh link is refused, not silently reactivated, security.md §9.1); `create_invite`/`revoke_invite` (admin+ only, resolved via `my_batch_role`, each writing one `audit_logs` row — `invite_created`/`invite_revoked`, both already in Phase 2's `audit_action` enum; `revoke_invite` is idempotent, no duplicate audit row on a second revoke). **A real bug the adversarial suite caught before any test depended on it**: `revoke_invite`'s and `redeem_invite`'s bare `where id = ...`/`where id = p_invite_id` clauses were genuinely ambiguous in Postgres — `RETURNS TABLE(id uuid, ...)` declares `id` as an implicit PL/pgSQL OUT-parameter variable in scope for the whole function body, colliding with the real column name. Fixed by qualifying every reference with a table alias (`bi.id`). `create_invite`/`revoke_invite` deliberately `RETURNS TABLE` of named columns rather than `public.batch_invites` — the only way to keep `token_hash` out of the RPC's own result, since a column-level `GRANT` does not restrict what a function returns.
+
+**Durable decision: raw-token hashing happens in Node, not SQL.** `features/invitations/token.ts` generates the raw token (`crypto.randomBytes(32)`, base64url) and its SHA-256 hash entirely in the Server Action layer; only the hash ever reaches a database call. This avoids introducing a `pgcrypto` dependency this schema has never otherwise needed, and means the raw token's only moment of existence is one request's Node process memory — never logged, never returned from a database call, never persisted.
+
+**Backend:**
+
+- `features/invitations/` — `schema.ts`, `types.ts`, `permissions.ts` (`canManageInvites`, admin+), `token.ts` (raw-token generation/hashing), `request-ip.ts` (best-effort `x-forwarded-for` extraction for the rate limit's IP dimension — an explicitly documented, accepted limitation off of a trusted edge), `queries.ts` (`listBatchInvites`, `isInviteUsable` — a display computation only, never an authorization decision), `actions.ts` (`createInviteAction`, `revokeInviteAction`, `validateInviteAction`, `redeemInviteAction`).
+- `createInviteAction` is the only place the raw token exists; it builds the shareable `{site}/invite#{token}` URL once and returns it in the action's own result — never read back from anywhere, matching security.md §9.1's "token travels in the URL fragment."
+- `redeemInviteAction` returns `requiresAuth: true` for an unauthenticated caller **without calling the RPC at all** — so a visitor who has not signed in yet never spends a rate-limit hit on a call that cannot succeed.
+
+**Frontend:**
+
+- `/batches/[batchId]/invite` — admin+-only invite creation/list/revoke (`InviteManager`, `InviteCreateForm`); the just-created link is shown once, in a copyable row, and is never retrievable again (matching the fact that only the hash is ever stored).
+- `/invite` — the public landing/redemption page, deliberately outside every auth-gated route group. `InviteLandingView` is a **Client Component** because the raw token lives in the URL **fragment**, which is never sent to the server at all (security.md §9.1) — reading it, and then replacing the visible URL via `history.replaceState`, can only happen client-side. Calls `validateInviteAction` (anon-capable) to show the batch name, then `redeemInviteAction` only on an explicit "Join" click.
+- **The sign-in detour never puts the token back in a URL.** An unauthenticated visitor who clicks "Join" has the token stashed in `sessionStorage` (never a query string) and is routed to `/sign-in`; a new `PendingInviteRedirect` component rendered on `/home` (where every auth flow in this product already lands) detects the pending token after sign-in/onboarding and routes back to `/invite` with no hash at all — `InviteLandingView` reads the fallback from `sessionStorage` directly. No change was made to `features/authentication`'s redirect allowlist.
+- Batch home (`/batches/[batchId]`) gained an "Invite classmates" link, admin+ only (`canManageInvites`).
+
+**Tests written and gates actually executed (all against the real hosted `BatchVault-Dev` project):**
+
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `pnpm lint` | **PASS** |
+| Typecheck | `pnpm typecheck` | **PASS** |
+| Unit tests | `pnpm test:unit` | **PASS** — 23 tests (unchanged) |
+| Adversarial DB suite | `pnpm test:db` | **PASS — 121 passed, 0 failed, 7 files** (`invites.test.ts` new: 33 tests; `foundation-migrations.test.ts` updated — see below; the other five Phase 0–2 files unchanged and still passing) |
+| Production build | `pnpm build` | **PASS** |
+| Client artifact scan | `pnpm test:artifacts` | **PASS** — 3 tests |
+| Dependency audit | `pnpm audit --prod --audit-level high` | **FAIL — pre-existing, not caused by this phase.** `next@16.3.4` carries five known advisories (one critical, several high/moderate), patched at `>=16.3.8`. `package.json`/`pnpm-lock.yaml` have zero diff from before this session (`git diff --stat` confirmed) — this dependency was already at this version when Phase 3A began. Upgrading Next.js is an unrelated change outside this phase's scope ("implement ONLY Phase 3"); recorded here as a known, pre-existing gate failure, not silently fixed or silently ignored. |
+| Playwright E2E | `pnpm test:e2e` | **PASS** — 38 passed, 2 explicitly-named skips (the same pre-existing, quota-guarded "check-your-email" skip from Phase 1, unrelated to this phase). New: `invite-join-flow.spec.ts` (owner creates an invite → copies the link → signs out → an unauthenticated recipient follows the link, sees the batch name, is routed through sign-in/onboarding, and the pending redemption resumes automatically and lands them in the batch; plus an invalid-token generic-failure case), on both projects. **One cold-start flake** on the very first two tests scheduled (an a11y scan hitting its 30s navigation timeout immediately after `playwright install` finished downloading the browser) — clean on an isolated re-run, the same documented pattern Phase 0's session recorded |
+
+**New test files:** `tests/db/invites.test.ts` (table privilege + column-level `token_hash` exclusion; the private rate-limit helper refusing every client role directly; `create_invite`/`revoke_invite` admin+-only checks including cross-batch and anon refusal, idempotent revoke, exactly-one audit row each; `validate_invite`'s anon-and-authenticated callability, one indistinguishable generic failure for never-issued/revoked/expired/exhausted tokens, non-mutation of `use_count`, and a seeded-rate-limit-hit test; `redeem_invite`'s anon refusal, both join-policy paths (active vs. pending), idempotent re-redemption without double-charging `use_count`, the removed-member-does-not-rejoin case, revoked/exhausted refusal, and a genuine two-connection concurrency test proving a `max_uses = 1` invite is redeemed exactly once). `tests/e2e/invite-join-flow.spec.ts`.
+
+**Known, accepted, honestly documented (not gaps to silently fix later):**
+
+- **The `supabase` CLI's `--linked` commands (`db push`, `gen types --linked`, `projects list`) all failed with a transport error reaching `api.supabase.com` in this session's sandbox**, despite a successful raw TCP connect to the same host on port 443 — most likely an auth-token or proxy/TLS-interception issue specific to this sandboxed environment, not investigated further since a working alternative existed. Migrations were applied via a direct `pg` connection reading `.env.local` (the same fallback Phase 1's session used for a different reason). `gen types --db-url` was also tried and failed differently (`LegacyDockerRunError` — that code path needs Docker, matching the already-documented Phase 1 finding that `db push`/`db reset` need Docker but `--linked` type generation historically didn't). **`types/database.ts` was hand-extended to match the live schema exactly** (verified against the real migration SQL, not guessed) rather than CLI-generated — a deliberate, narrow, documented exception to rules.md §1.1's "types are generated, never hand-maintained," forced by this environment's tooling constraints, not a convenience.
+- **`pnpm audit` fails on a pre-existing `next` version**, unrelated to this phase — see the gate table above.
+- **Node's default TLS trust store did not include whatever CA this sandbox's network path uses**, causing `fetch failed`/`UNABLE_TO_VERIFY_LEAF_SIGNATURE` errors against Supabase's Auth Admin API and Storage REST endpoints until every test run in this session set `NODE_OPTIONS=--use-system-ca`. This is an environment configuration fact worth carrying into later sessions on this same machine, not a product or test defect.
+- **Playwright's default `fullyParallel` scheduling (the project's own configured default) exceeded what this sandbox could reliably run**, producing navigation timeouts across both new and pre-existing, unrelated specs (`foundation-smoke`, `auth-accessibility`, `batch-creation-flow`) when run at full concurrency. Re-running with `--workers=2` (and once, `--workers=1`, to isolate a specific failure) made every one of those same tests pass — this is sandbox resource contention, not a regression in any phase's code, and the full suite's real signal (38 passed, 2 named skips) was obtained at reduced concurrency, not by skipping anything silently.
+- `pnpm` is not on this sandbox's `PATH` (same fact Phase 0's session recorded); a disposable `corepack pnpm`-wrapping shim script was used only so Playwright's own `webServer` config (which invokes bare `pnpm start`) could launch. Nothing under version control depends on this.
+- The invite-redemption rate limit (20 attempts / 15-minute trailing window, combined IP-or-account) is a deliberately simple, Postgres-only mechanism — no Redis/Upstash, which is not on the locked stack. Its IP dimension is best-effort (`x-forwarded-for`, spoofable off a trusted edge) by nature; the account dimension is the half that cannot be forged.
+- No UI exists yet for a batch admin to see **who** is pending approval or to approve/reject — that is explicitly Phase 3B scope (`listBatchMembers`'s existing roster view already shows pending rows to an active member, per Phase 2, but there is no action on them yet).
+
+### memory.md update
+
+Phase 3A complete; `batch_invites`, `invite_redemption_attempts`, and `batch_members.invite_id` shipped; the token-hashing design (raw token never reaches SQL) and the rate-limit mechanism (Postgres-only, IP-or-account) are recorded as durable decisions.
 
 ## Phase 2 — Batch Spaces (complete)
 
@@ -300,7 +358,7 @@ Final SQL function names and signatures are an implementation decision — not f
 
 ## Database Summary
 
-MVP tables: `profiles` (**implemented, Phase 1**), `batches`, `batch_members`, `audit_logs` (**implemented, Phase 2** — `batches.cover_media_asset_id` and `batch_members.invite_id` deliberately deferred to the phases that create their FK targets). Planned, not yet implemented: `batch_invites`, `memories`, `media_assets`, `comments`, `reactions`, `reports`.
+MVP tables: `profiles` (**implemented, Phase 1**), `batches`, `batch_members`, `audit_logs` (**implemented, Phase 2** — `batches.cover_media_asset_id` still deliberately deferred to Phase 4A), `batch_invites` (**implemented, Phase 3A** — `batch_members.invite_id` added by this phase too). Planned, not yet implemented: `memories`, `media_assets`, `comments`, `reactions`, `reports`. **Implementation-only, not a `database.md` MVP table:** `invite_redemption_attempts` (Phase 3A) — rate-limit bookkeeping only, see "Phase 3A" above.
 
 Key schema ideas to remember:
 
@@ -328,7 +386,7 @@ Per `phases.md`:
 - Phase 0 — Foundation — **COMPLETE**
 - Phase 1 — Authentication & Profile — **COMPLETE** (see above)
 - Phase 2 — Batch Spaces — **COMPLETE** (see above)
-- Phase 3A — Invitations & Join
+- Phase 3A — Invitations & Join — **COMPLETE** (see above)
 - Phase 3B — Membership Decisions & Roles
 - Phase 4A — Photo Upload Pipeline
 - Phase 4B — Video Constraints, Edit/Delete & Media Reliability
@@ -340,7 +398,7 @@ Per `phases.md`:
 - Phase 8B — Batch & Account Lifecycle (gated — see Known Issues below)
 - Phase 9 — Quality & Production Readiness
 
-**Current implementation phase: Phase 2, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2's migrations are applied to the hosted dev project, every required gate has been executed and observed passing (lint, typecheck, unit, the 88-test adversarial DB suite, build, artifact scan, audit, Playwright E2E), and `docs/memory.md` is updated per phases.md's own instruction. See "Phase 2 — Batch Spaces (complete)" above for full detail. **Nothing has been committed for Phase 2** — this session was told not to commit. Phase 3A begins only on explicit instruction.
+**Current implementation phase: Phase 3A, COMPLETE** — Phase 0 is complete and committed (`c8ae566`); Phase 1 is complete and committed (`0408fbf`); Phase 2's and Phase 3A's migrations are both applied to the hosted dev project; every required Phase 3A gate has been executed and observed passing except `pnpm audit` (pre-existing `next` version, unrelated to this phase — see "Phase 3A — Invitations & Join (complete)" above); `docs/memory.md` is updated per phases.md's own instruction. **Nothing has been committed for Phase 2 or Phase 3A** — this session was told not to commit. Phase 3B begins only on explicit instruction.
 
 ## Post-MVP Boundaries
 
@@ -429,11 +487,11 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Commit Phase 2**, then **Phase 3A / Prompt 15 — Invitations & Join** only on explicit instruction.
+**Commit Phase 2 and Phase 3A**, then **Phase 3B — Membership Decisions & Roles** only on explicit instruction.
 
-Phase 2 is complete (see "Phase 2 — Batch Spaces (complete)" above): migrations applied to the hosted dev project, every required gate executed and observed passing, `docs/memory.md` updated. Nothing has been committed for Phase 2 yet — this session was told not to commit.
+Phase 2 and Phase 3A are both complete (see their sections above): migrations applied to the hosted dev project, every required gate executed and observed passing (Phase 3A's `pnpm audit` exception is pre-existing and documented above, not caused by this phase), `docs/memory.md` updated. Nothing has been committed for either phase yet — this session was told not to commit.
 
-Phase 3A's own hard prerequisite per `phases.md` is Phase 2 complete plus Q1/PRD #1–2 decided — both already true (this phase resolved Q1). No further re-confirmation is needed before Phase 3A beyond the standard `pnpm test:db` run, which continues to exercise the B2 suite every time.
+Phase 3B's own prerequisite per `phases.md` is Phase 3A complete — true now. No decision gate blocks Phase 3B's start.
 
 **Foundation configuration fact, corrected by measurement.** `supabase/config.toml` sets `auto_expose_new_tables = false`, which applies to the **local CLI stack only**. The hosted project does **not** behave that way: `ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated`/`service_role` full DML on new `public` tables and `EXECUTE` on new functions (B5). The earlier note that "each cloud project must be configured to match" was right to flag this — it is now confirmed that the cloud project does **not** match, and the required action is an explicit `REVOKE` in every migration (not a `PUBLIC` revoke, which does nothing here).
 
@@ -467,4 +525,4 @@ Every future session must:
 
 ---
 
-STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented; every required gate (lint, typecheck, unit — 23, adversarial DB — 88, build, artifact scan, audit, Playwright E2E — 34 passed/2 explicitly-named-skip) was executed against the real project and observed passing; `docs/memory.md` is updated. **Nothing has been committed for Phase 2** — this session was told not to commit. **Next Task: commit Phase 2, then Phase 3A / Prompt 15 — Invitations & Join only on explicit instruction** (see "Next Task" above).
+STOP — **Phase 0 / Prompt 12 is COMPLETE** (committed `c8ae566`). **Phase 1 / Prompt 13 is COMPLETE** (committed `0408fbf`). **Phase 2 / Prompt 14 is COMPLETE** (2026-09-26): `batches`, `batch_members`, `audit_logs`, the `my_batch_role` membership predicate, and the `create_batch`/`update_batch_settings` RPCs are live on the hosted `BatchVault-Dev` project; `features/batches` and `features/memberships` (read side) are fully implemented; `lib/authz` role hierarchy implemented. **Phase 3A / Prompt 15 ("Phase 3A" section) is COMPLETE** (2026-10-18): `batch_invites`, `invite_redemption_attempts`, `batch_members.invite_id`, and the `check_invite_rate_limit`/`validate_invite`/`redeem_invite`/`create_invite`/`revoke_invite` functions are live on the hosted `BatchVault-Dev` project; `features/invitations` and the `/invite` landing page are fully implemented. Every required gate (lint, typecheck, unit — 23, adversarial DB — 121 across 7 files, build, artifact scan, Playwright E2E — 38 passed/2 explicitly-named-skip) was executed against the real project and observed passing; `pnpm audit` fails on a pre-existing, unrelated `next` version (documented above, not fixed — out of this phase's scope); `docs/memory.md` is updated. **Nothing has been committed for Phase 2 or Phase 3A** — this session was told not to commit. **Next Task: commit Phase 2 and Phase 3A, then Phase 3B — Membership Decisions & Roles only on explicit instruction** (see "Next Task" above).

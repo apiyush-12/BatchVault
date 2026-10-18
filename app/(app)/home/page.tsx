@@ -3,6 +3,7 @@ import { Archive, Plus } from "lucide-react";
 
 import { SignOutButton } from "@/features/authentication/components/sign-out-button";
 import { listMyBatches } from "@/features/batches/queries";
+import { PendingInviteRedirect } from "@/features/invitations/components/pending-invite-redirect";
 import { getOwnProfile } from "@/features/profiles/queries";
 
 export const metadata = { title: "BatchVault" };
@@ -18,6 +19,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-10 px-5 py-10 sm:px-8">
+      <PendingInviteRedirect />
       <header className="flex items-center justify-between gap-4">
         <span className="inline-flex items-center gap-2 text-heading-sm font-semibold">
           <Archive aria-hidden="true" className="size-5 text-primary" />

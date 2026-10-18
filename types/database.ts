@@ -90,6 +90,70 @@ export type Database = {
           },
         ]
       }
+      batch_invites: {
+        Row: {
+          batch_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          revoked_by: string | null
+          token_hash: string
+          updated_at: string
+          use_count: number
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash: string
+          updated_at?: string
+          use_count?: number
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          max_uses?: number | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash?: string
+          updated_at?: string
+          use_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batch_invites_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_invites_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       batch_members: {
         Row: {
           batch_id: string
@@ -97,6 +161,7 @@ export type Database = {
           decided_at: string | null
           decided_by: string | null
           id: string
+          invite_id: string | null
           invited_by: string | null
           joined_at: string | null
           profile_id: string
@@ -111,6 +176,7 @@ export type Database = {
           decided_at?: string | null
           decided_by?: string | null
           id?: string
+          invite_id?: string | null
           invited_by?: string | null
           joined_at?: string | null
           profile_id: string
@@ -125,6 +191,7 @@ export type Database = {
           decided_at?: string | null
           decided_by?: string | null
           id?: string
+          invite_id?: string | null
           invited_by?: string | null
           joined_at?: string | null
           profile_id?: string
@@ -147,6 +214,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "batch_members_invite_id_fkey"
+            columns: ["invite_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "batch_invites"
+            referencedColumns: ["id", "batch_id"]
           },
           {
             foreignKeyName: "batch_members_invited_by_fkey"
@@ -223,6 +297,35 @@ export type Database = {
           },
         ]
       }
+      invite_redemption_attempts: {
+        Row: {
+          attempted_at: string
+          id: number
+          ip: string | null
+          profile_id: string | null
+        }
+        Insert: {
+          attempted_at?: string
+          id?: never
+          ip?: string | null
+          profile_id?: string | null
+        }
+        Update: {
+          attempted_at?: string
+          id?: never
+          ip?: string | null
+          profile_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invite_redemption_attempts_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_path: string | null
@@ -261,6 +364,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_invite_rate_limit: {
+        Args: { p_ip: string | null; p_profile_id: string | null }
+        Returns: undefined
+      }
       complete_onboarding: {
         Args: never
         Returns: {
@@ -314,9 +421,50 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      create_invite: {
+        Args: {
+          p_batch_id: string
+          p_expires_at?: string | null
+          p_max_uses?: number | null
+          p_token_hash: string
+        }
+        Returns: {
+          batch_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          updated_at: string
+          use_count: number
+        }[]
+      }
       my_batch_role: {
         Args: { p_batch_id: string }
         Returns: Database["public"]["Enums"]["batch_role"]
+      }
+      redeem_invite: {
+        Args: { p_ip?: string | null; p_token_hash: string }
+        Returns: {
+          batch_id: string
+          batch_name: string
+          status: Database["public"]["Enums"]["membership_status"]
+        }[]
+      }
+      revoke_invite: {
+        Args: { p_invite_id: string }
+        Returns: {
+          batch_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          max_uses: number | null
+          revoked_at: string | null
+          updated_at: string
+          use_count: number
+        }[]
       }
       set_own_avatar_path: {
         Args: { object_path: string }
@@ -371,6 +519,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      validate_invite: {
+        Args: { p_ip?: string | null; p_token_hash: string }
+        Returns: string
       }
     }
     Enums: {
