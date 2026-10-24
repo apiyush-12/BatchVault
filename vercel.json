@@ -1,6 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/sweep-media", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/sweep-media", "schedule": "0 3 * * *" },
     { "path": "/api/cron/reap-batches", "schedule": "30 3 * * *" }
   ]
 }
