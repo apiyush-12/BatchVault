@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Video } from "lucide-react";
 
 import { NotAvailableState } from "@/components/ui/not-available";
 import { getBatchById } from "@/features/batches/queries";
@@ -37,8 +37,15 @@ export default async function UploadPhotoPage({
         <h1 className="text-heading-lg font-semibold">Add a memory</h1>
       </header>
 
-      <main id="main">
+      <main id="main" className="flex flex-col gap-6">
         <PhotoUploadForm batchId={batchId} />
+        <Link
+          href={`/batches/${batchId}/upload/video`}
+          className="inline-flex items-center gap-2 text-body-sm font-medium text-foreground-muted hover:text-foreground"
+        >
+          <Video aria-hidden="true" className="size-4" />
+          Add a short video instead
+        </Link>
       </main>
     </div>
   );

@@ -14,7 +14,12 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 import { finalizeMemoryAction, requestPhotoUploadAction } from "../actions";
 import { finalizeMemoryInputSchema, type FinalizeMemoryInput } from "../schema";
-import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES } from "../types";
+import {
+  ALLOWED_IMAGE_TYPES,
+  HEIC_GUIDANCE_MESSAGE,
+  isLikelyHeic,
+  MAX_IMAGE_BYTES,
+} from "../types";
 
 type Stage = "idle" | "uploading" | "finalizing" | "error" | "done";
 
@@ -49,8 +54,11 @@ export function PhotoUploadForm({ batchId }: { batchId: string }) {
       return;
     }
     if (!ALLOWED_IMAGE_TYPES.includes(chosen.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
+      // R6 (resolved 2026-10-24, security.md R6): HEIC/HEIF gets specific,
+      // actionable guidance instead of a generic rejection — a best-effort
+      // client-side check only; the server-side allowlist is unchanged.
       setStage("error");
-      setError("Please choose a JPEG, PNG, WebP, or GIF image.");
+      setError(isLikelyHeic(chosen) ? HEIC_GUIDANCE_MESSAGE : "Please choose a JPEG, PNG, WebP, or GIF image.");
       return;
     }
     if (chosen.size > MAX_IMAGE_BYTES) {

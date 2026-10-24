@@ -1213,7 +1213,7 @@ If the abuser is the batch owner, nobody inside the batch outranks them and no o
 
 **R5 — Audit trail loses actor identity on account deletion** (§20). The action survives, the actor does not — for exactly the person most likely to delete their account after abuse.
 
-**R6 — HEIC is excluded** (§15). Not a security issue, but it means many iPhone uploads fail with no in-product path forward. A product answer is needed or members will hit a wall on their most common upload.
+**R6 — HEIC is excluded** (§15). Not a security issue, but it means many iPhone uploads fail with no in-product path forward. **✅ RESOLVED (Phase 4B, 2026-10-24):** HEIC/HEIF stays excluded from the server-side allowlist (§15, unchanged — no transcoding pipeline exists or is added). The upload UX adds a **client-side, best-effort** check (by file extension/declared type, since the client cannot be trusted and this is UX only, never enforcement) that shows the user clear guidance — *"HEIC photos aren't supported yet. On iPhone, change Settings → Camera → Formats to 'Most Compatible', or choose 'Keep Original' when sharing this photo to export it as JPEG"* — instead of a generic "unsupported file type" error. The server-side allowlist and its rejection behavior are unchanged; this is advisory copy only, exactly like every other client-side check already documented as UX-only (architecture §8, ADR-08a analog).
 
 **R7 — No storage quotas** (§16). A member can consume a batch's storage within per-file caps. Bounded socially and by billing visibility; revisit if abused.
 

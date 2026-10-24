@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Plus } from "lucide-react";
 
 import { NotAvailableState } from "@/components/ui/not-available";
 import { getBatchById } from "@/features/batches/queries";
@@ -64,24 +64,42 @@ export default async function BatchMemoriesPage({
               className="flex flex-col gap-2 overflow-hidden rounded-lg border border-border bg-surface"
             >
               <div className="relative aspect-square bg-surface-sunken">
-                {memory.imageUrl !== null && (
+                {memory.mediaKind === "video" && memory.mediaUrl !== null ? (
+                  <video
+                    src={memory.mediaUrl}
+                    poster={memory.posterUrl ?? undefined}
+                    controls
+                    className="size-full object-cover"
+                  />
+                ) : memory.mediaUrl !== null ? (
                   <Image
-                    src={memory.imageUrl}
+                    src={memory.mediaUrl}
                     alt={memory.caption ?? ""}
                     fill
                     unoptimized
                     className="object-cover"
                   />
-                )}
+                ) : null}
               </div>
               <div className="flex flex-col gap-0.5 p-2">
                 {memory.caption !== null && (
                   <p className="line-clamp-2 text-caption text-foreground">{memory.caption}</p>
                 )}
-                <p className="text-caption text-foreground-muted">
-                  {memory.eventName !== null ? `${memory.eventName} · ` : ""}
-                  {new Date(memory.occurredOn).toLocaleDateString()}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-caption text-foreground-muted">
+                    {memory.eventName !== null ? `${memory.eventName} · ` : ""}
+                    {new Date(memory.occurredOn).toLocaleDateString()}
+                  </p>
+                  {memory.isOwnMemory && (
+                    <Link
+                      href={`/batches/${batchId}/memories/${memory.id}/edit`}
+                      aria-label="Edit memory"
+                      className="inline-flex items-center text-foreground-muted hover:text-foreground"
+                    >
+                      <Pencil aria-hidden="true" className="size-4" />
+                    </Link>
+                  )}
+                </div>
               </div>
             </li>
           ))}

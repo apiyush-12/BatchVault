@@ -660,6 +660,7 @@ export type Database = {
           p_event_name: string | null
           p_media_asset_id: string
           p_occurred_on: string
+          p_poster_media_asset_id?: string | null
         }
         Returns: {
           batch_id: string
@@ -680,6 +681,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      list_sweepable_media: {
+        Args: { p_grace_seconds?: number }
+        Returns: {
+          id: string
+          status: Database["public"]["Enums"]["media_status"]
+          storage_bucket: string
+          storage_path: string
+        }[]
+      }
       my_batch_role: {
         Args: { p_batch_id: string }
         Returns: Database["public"]["Enums"]["batch_role"]
@@ -687,6 +697,7 @@ export type Database = {
       preallocate_media: {
         Args: {
           p_batch_id: string
+          p_client_reported_duration_seconds?: number | null
           p_declared_mime_type: string
           p_declared_size: number
           p_original_filename?: string | null
@@ -724,6 +735,10 @@ export type Database = {
       purge_rejected_media: {
         Args: { p_media_asset_id: string }
         Returns: undefined
+      }
+      purge_swept_media: {
+        Args: { p_media_asset_ids: string[] }
+        Returns: string[]
       }
       redeem_invite: {
         Args: { p_ip?: string | null; p_token_hash: string }

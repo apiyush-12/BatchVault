@@ -7,7 +7,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 import { stripExifIfSupported } from "./exif";
-import { finalizeMemoryInputSchema, requestPhotoUploadInputSchema } from "./schema";
+import {
+  finalizeMemoryInputSchema,
+  requestPhotoUploadInputSchema,
+  requestVideoUploadInputSchema,
+} from "./schema";
 import { GENERIC_ERROR, type ActionResult } from "./types";
 
 /**
@@ -61,6 +65,54 @@ export async function requestPhotoUploadAction(
 }
 
 /**
+ * Video preallocation (phases.md Phase 4B) — identical shape and order to
+ * the photo path, against the same RPC (`preallocate_media` now dispatches
+ * on the declared mime type server-side). `clientReportedDurationSeconds`
+ * is forwarded as-is; it is stored for display/debugging only and is never
+ * treated as authoritative (ADR-08a).
+ */
+export async function requestVideoUploadAction(
+  input: unknown,
+): Promise<ActionResult<{ mediaAssetId: string; path: string; token: string }>> {
+  const supabase = await createSupabaseServerClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError !== null || userData.user === null) {
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const parsed = requestVideoUploadInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? GENERIC_ERROR };
+  }
+  const { batchId, declaredMimeType, declaredSize, originalFilename, clientReportedDurationSeconds } =
+    parsed.data;
+
+  const { data: asset, error } = await supabase.rpc("preallocate_media", {
+    p_batch_id: batchId,
+    p_declared_mime_type: declaredMimeType,
+    p_declared_size: declaredSize,
+    p_original_filename: originalFilename ?? null,
+    p_client_reported_duration_seconds: clientReportedDurationSeconds ?? null,
+  });
+
+  if (error !== null || asset === null) {
+    logger.error("media.preallocate_video_failed", { userId: userData.user.id, batchId });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from(asset.storage_bucket)
+    .createSignedUploadUrl(asset.storage_path);
+
+  if (signError !== null || signed === null) {
+    logger.error("media.sign_upload_url_failed", { userId: userData.user.id, batchId });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  return { ok: true, data: { mediaAssetId: asset.id, path: signed.path, token: signed.token } };
+}
+
+/**
  * Finalize (architecture §8 step 4). For a `pending` asset, performs the
  * one deliberate exception to "bytes never proxy through the server"
  * (security.md §27 B1): downloads the uploaded object, strips EXIF for
@@ -81,11 +133,11 @@ export async function finalizeMemoryAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? GENERIC_ERROR };
   }
-  const { mediaAssetId, caption, eventName, occurredOn } = parsed.data;
+  const { mediaAssetId, caption, eventName, occurredOn, posterMediaAssetId } = parsed.data;
 
   const { data: assetRow, error: assetError } = await supabase
     .from("media_assets")
-    .select("status, storage_bucket, storage_path")
+    .select("status, kind, storage_bucket, storage_path")
     .eq("id", mediaAssetId)
     .maybeSingle();
 
@@ -93,9 +145,15 @@ export async function finalizeMemoryAction(
     return { ok: false, error: GENERIC_ERROR };
   }
 
-  // Only a still-pending asset needs the strip-and-reupload step — an
-  // idempotent retry of an already-`ready` asset must not re-touch Storage.
-  if (assetRow.status === "pending") {
+  // Only a still-pending IMAGE needs the strip-and-reupload step — an
+  // idempotent retry of an already-`ready` asset must not re-touch Storage,
+  // and a video is never proxied through the server at all (Phase 4B):
+  // downloading/re-uploading up to the 100 MiB video cap through a
+  // serverless function risks exactly the body-size/timeout problems
+  // architecture §8/ADR-07 names as the reason uploads go direct-to-Storage
+  // in the first place. `stripExifIfSupported` is JPEG-only regardless
+  // (features/media/exif.ts), so a video has nothing for this step to do.
+  if (assetRow.status === "pending" && assetRow.kind === "image") {
     const { data: downloaded, error: downloadError } = await supabase.storage
       .from(assetRow.storage_bucket)
       .download(assetRow.storage_path);
@@ -130,6 +188,7 @@ export async function finalizeMemoryAction(
     p_caption: caption ?? null,
     p_event_name: eventName ?? null,
     p_occurred_on: occurredOn,
+    p_poster_media_asset_id: posterMediaAssetId ?? null,
   });
 
   if (error !== null || memory === null) {

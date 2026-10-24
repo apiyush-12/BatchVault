@@ -29,6 +29,14 @@ import {
 
 export const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: supabaseKey,
+  /**
+   * Shared secret for the Phase 4B cron sweep route (architecture §18.9:
+   * "cron routes verify the shared secret before parsing the body"). Never
+   * `NEXT_PUBLIC_`, never logged, compared with a constant-time check at
+   * the route (`lib/auth/cron.ts`) — never `===`, which leaks timing
+   * information proportional to the matching prefix length.
+   */
+  CRON_SECRET: z.string().min(16, "CRON_SECRET must be at least 16 characters."),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

@@ -13,7 +13,12 @@ interface MediaAssetRow {
   storage_path: string;
   mime_type: string | null;
   byte_size: number | null;
+  position: number;
+  poster_media_asset_id: string | null;
 }
+
+const MEDIA_ASSET_COLUMNS =
+  "id, batch_id, memory_id, kind, status, storage_path, mime_type, byte_size, position, poster_media_asset_id";
 
 function mapRow(row: MediaAssetRow): MediaAsset {
   return {
@@ -25,10 +30,12 @@ function mapRow(row: MediaAssetRow): MediaAsset {
     storagePath: row.storage_path,
     mimeType: row.mime_type,
     byteSize: row.byte_size,
+    position: row.position,
+    posterMediaAssetId: row.poster_media_asset_id,
   };
 }
 
-/** The `ready`, position-0 media asset for each memory id given. RLS admits only what the caller may see. */
+/** The `ready`, position-0 (primary) media asset for each memory id given. RLS admits only what the caller may see. */
 export async function getPrimaryMediaByMemoryIds(
   memoryIds: string[],
 ): Promise<Map<string, MediaAsset>> {
@@ -39,7 +46,7 @@ export async function getPrimaryMediaByMemoryIds(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("media_assets")
-    .select("id, batch_id, memory_id, kind, status, storage_path, mime_type, byte_size")
+    .select(MEDIA_ASSET_COLUMNS)
     .in("memory_id", memoryIds)
     .eq("position", 0);
 
@@ -54,6 +61,35 @@ export async function getPrimaryMediaByMemoryIds(
     }
   }
   return byMemoryId;
+}
+
+/**
+ * A video's poster-frame companion image, by the video asset's own
+ * `poster_media_asset_id` (phases.md Phase 4B). RLS admits only what the
+ * caller may see; a video with no linked poster (capture failed, or the
+ * client never offered one) is simply absent from the returned map — the
+ * frontend falls back to a neutral placeholder, never an error.
+ */
+export async function getMediaAssetsByIds(ids: string[]): Promise<Map<string, MediaAsset>> {
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(MEDIA_ASSET_COLUMNS)
+    .in("id", ids);
+
+  if (error !== null) {
+    throw error;
+  }
+
+  const byId = new Map<string, MediaAsset>();
+  for (const row of (data ?? []) as MediaAssetRow[]) {
+    byId.set(row.id, mapRow(row));
+  }
+  return byId;
 }
 
 /**
