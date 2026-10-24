@@ -459,6 +459,212 @@ export type Database = {
           },
         ]
       }
+      comments: {
+        Row: {
+          author_id: string | null
+          batch_id: string
+          body: string
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+          edited_at: string | null
+          id: string
+          memory_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          batch_id: string
+          body: string
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          edited_at?: string | null
+          id?: string
+          memory_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          batch_id?: string
+          body?: string
+          created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
+          edited_at?: string | null
+          id?: string
+          memory_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_memory_fkey"
+            columns: ["memory_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id", "batch_id"]
+          },
+        ]
+      }
+      reactions: {
+        Row: {
+          batch_id: string
+          created_at: string
+          id: string
+          kind: string
+          memory_id: string
+          profile_id: string
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          memory_id: string
+          profile_id?: string
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          memory_id?: string
+          profile_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reactions_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reactions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reactions_memory_fkey"
+            columns: ["memory_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id", "batch_id"]
+          },
+        ]
+      }
+      reports: {
+        Row: {
+          batch_id: string
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reporter_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: Database["public"]["Enums"]["report_status"]
+          target_comment_id: string | null
+          target_id: string
+          target_kind: Database["public"]["Enums"]["report_target_kind"]
+          target_member_id: string | null
+          target_memory_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason: string
+          reporter_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: Database["public"]["Enums"]["report_status"]
+          target_comment_id?: string | null
+          target_id: string
+          target_kind: Database["public"]["Enums"]["report_target_kind"]
+          target_member_id?: string | null
+          target_memory_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          reason?: string
+          reporter_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: Database["public"]["Enums"]["report_status"]
+          target_comment_id?: string | null
+          target_id?: string
+          target_kind?: Database["public"]["Enums"]["report_target_kind"]
+          target_member_id?: string | null
+          target_memory_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_target_memory_fkey"
+            columns: ["target_memory_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id", "batch_id"]
+          },
+          {
+            foreignKeyName: "reports_target_comment_fkey"
+            columns: ["target_comment_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id", "batch_id"]
+          },
+          {
+            foreignKeyName: "reports_target_member_fkey"
+            columns: ["target_member_id", "batch_id"]
+            isOneToOne: false
+            referencedRelation: "batch_members"
+            referencedColumns: ["id", "batch_id"]
+          },
+        ]
+      }
       invite_redemption_attempts: {
         Row: {
           attempted_at: string
@@ -654,6 +860,38 @@ export type Database = {
           use_count: number
         }[]
       }
+      create_report: {
+        Args: {
+          p_details?: string | null
+          p_reason: string
+          p_target_id: string
+          p_target_kind: Database["public"]["Enums"]["report_target_kind"]
+        }
+        Returns: {
+          batch_id: string
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reporter_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: Database["public"]["Enums"]["report_status"]
+          target_comment_id: string | null
+          target_id: string
+          target_kind: Database["public"]["Enums"]["report_target_kind"]
+          target_member_id: string | null
+          target_memory_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reports"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       finalize_memory: {
         Args: {
           p_caption: string | null
@@ -680,6 +918,41 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      list_audit_log: {
+        Args: { p_batch_id: string; p_limit?: number }
+        Returns: {
+          action: Database["public"]["Enums"]["audit_action"]
+          actor_profile_id: string | null
+          actor_role: Database["public"]["Enums"]["batch_role"] | null
+          batch_id: string | null
+          detail: Json | null
+          id: number
+          occurred_at: string
+          target_id: string | null
+          target_kind: Database["public"]["Enums"]["audit_target_kind"] | null
+        }[]
+      }
+      list_open_reports: {
+        Args: { p_batch_id: string }
+        Returns: {
+          batch_id: string
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reporter_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: Database["public"]["Enums"]["report_status"]
+          target_comment_id: string | null
+          target_id: string
+          target_kind: Database["public"]["Enums"]["report_target_kind"]
+          target_member_id: string | null
+          target_memory_id: string | null
+          updated_at: string
+        }[]
       }
       list_sweepable_media: {
         Args: { p_grace_seconds?: number }
@@ -772,6 +1045,13 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      remove_content: {
+        Args: {
+          p_target_id: string
+          p_target_kind: Database["public"]["Enums"]["report_target_kind"]
+        }
+        Returns: undefined
+      }
       remove_member: {
         Args: { p_batch_id: string; p_target_profile_id: string }
         Returns: {
@@ -795,6 +1075,40 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      resolve_report: {
+        Args: { p_report_id: string; p_resolution_note?: string | null }
+        Returns: {
+          batch_id: string
+          created_at: string
+          details: string | null
+          id: string
+          reason: string
+          reporter_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: Database["public"]["Enums"]["report_status"]
+          target_comment_id: string | null
+          target_id: string
+          target_kind: Database["public"]["Enums"]["report_target_kind"]
+          target_member_id: string | null
+          target_memory_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "reports"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      restore_content: {
+        Args: {
+          p_target_id: string
+          p_target_kind: Database["public"]["Enums"]["report_target_kind"]
+        }
+        Returns: undefined
       }
       revoke_invite: {
         Args: { p_invite_id: string }
@@ -923,6 +1237,8 @@ export type Database = {
       media_kind: "image" | "video"
       media_status: "pending" | "ready" | "rejected"
       membership_status: "pending" | "active" | "rejected" | "removed" | "left"
+      report_status: "open" | "resolved"
+      report_target_kind: "memory" | "comment" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1087,6 +1403,8 @@ export const Constants = {
       media_kind: ["image", "video"],
       media_status: ["pending", "ready", "rejected"],
       membership_status: ["pending", "active", "rejected", "removed", "left"],
+      report_status: ["open", "resolved"],
+      report_target_kind: ["memory", "comment", "member"],
     },
   },
 } as const

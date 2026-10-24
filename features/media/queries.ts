@@ -63,6 +63,22 @@ export async function getPrimaryMediaByMemoryIds(
   return byMemoryId;
 }
 
+/** Every `ready` media asset for one memory, ordered by position (phases.md Phase 5A detail page). */
+export async function getMediaAssetsByMemoryId(memoryId: string): Promise<MediaAsset[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("media_assets")
+    .select(MEDIA_ASSET_COLUMNS)
+    .eq("memory_id", memoryId)
+    .eq("status", "ready")
+    .order("position", { ascending: true });
+
+  if (error !== null) {
+    throw error;
+  }
+  return (data ?? []).map((row) => mapRow(row as MediaAssetRow));
+}
+
 /**
  * A video's poster-frame companion image, by the video asset's own
  * `poster_media_asset_id` (phases.md Phase 4B). RLS admits only what the

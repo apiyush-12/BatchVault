@@ -1245,7 +1245,7 @@ Post-MVP, designed but **not created**: `albums`, `album_memories`, `memory_peop
 
 **Q1 — Default `join_policy`. ✅ RESOLVED** (Phase 2 / Prompt 14; PRD.md unresolved #1–2). The schema default `invite_only_requires_approval` is confirmed as the product default, and the policy **is** owner/admin-configurable per batch via batch settings — not fixed product-wide.
 
-**Q2 — Reaction `kind` allowlist.** The uniqueness rule is settled; the permitted values are not (PRD unresolved #3). Held as CHECK-constrained `text` so the set can move in both directions.
+**Q2 — Reaction `kind` allowlist. ✅ RESOLVED (Phase 6, 2026-10-24):** a small fixed set — `like`, `love`, `laugh`, `wow`, `sad` — CHECK-constrained `text` (not an enum), exactly as this section already anticipated, so the set can still move in either direction without a column-type migration.
 
 **Q3 — Owner account deletion.** The schema enforces *at most* one owner but cannot enforce *at least* one. When an owner deletes their account, does the system block deletion until transfer, auto-promote the longest-serving admin, or allow a temporarily ownerless batch that admins can claim? This is the most consequential open item, because it is the one that can leave a batch structurally stuck.
 
