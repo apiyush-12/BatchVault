@@ -3,7 +3,8 @@ import { ArrowLeft } from "lucide-react";
 
 import { NotAvailableState } from "@/components/ui/not-available";
 import { BatchSettingsForm } from "@/features/batches/components/batch-settings-form";
-import { canEditBatchSettings } from "@/features/batches/permissions";
+import { DeleteBatchForm } from "@/features/batches/components/delete-batch-form";
+import { canDeleteBatch, canEditBatchSettings } from "@/features/batches/permissions";
 import { getBatchById } from "@/features/batches/queries";
 import { getMyMembership } from "@/features/memberships/queries";
 
@@ -49,8 +50,11 @@ export default async function BatchSettingsPage({
         <h1 className="text-heading-lg font-semibold">Batch settings</h1>
       </header>
 
-      <main id="main">
+      <main id="main" className="flex flex-col gap-10">
         <BatchSettingsForm batch={batch} />
+        {canDeleteBatch(membership.role) && (
+          <DeleteBatchForm batchId={batch.id} batchName={batch.name} />
+        )}
       </main>
     </div>
   );

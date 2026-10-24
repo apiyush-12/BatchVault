@@ -7,9 +7,11 @@ import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/logging/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceRoleClient } from "@/lib/supabase/service-role";
 
 import {
   avatarObjectPathSchema,
+  deleteAccountInputSchema,
   onboardingInputSchema,
   updateProfileInputSchema,
 } from "./schema";
@@ -214,4 +216,69 @@ export async function confirmAvatarUploadAction(
   revalidatePath("/settings");
   revalidatePath("/onboarding");
   return { ok: true, data: { avatarUrl } };
+}
+
+const OWNS_ACTIVE_BATCH_ERROR =
+  "You own a batch. Make someone else the owner, or delete the batch, before deleting your account.";
+
+/**
+ * Permanent account deletion (security.md §22, B3, R4).
+ *
+ * `prepare_account_deletion` refuses while the caller still owns a live
+ * batch (Q3: block pending transfer). Avatar objects are removed first,
+ * with the caller's own client (object-first, security.md §24). Deleting the
+ * Auth user is service-role call site 1 (security.md §12) and always targets
+ * the authenticated caller's own id — never an id from the request. The
+ * database cascade then removes the profile, memberships and reactions, and
+ * sets authorship on shared memories/comments to NULL ("Former member").
+ */
+export async function deleteAccountAction(input: unknown): Promise<ActionResult> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError !== null || userData.user === null) {
+    return { ok: false, error: GENERIC_ERROR };
+  }
+  const userId = userData.user.id;
+
+  const parsed = deleteAccountInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? GENERIC_ERROR };
+  }
+
+  const { error: precheckError } = await supabase.rpc("prepare_account_deletion");
+  if (precheckError !== null) {
+    if (precheckError.message === "owns_active_batch") {
+      return { ok: false, error: OWNS_ACTIVE_BATCH_ERROR };
+    }
+    logger.error("profiles.delete_account_precheck_failed", { userId });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const { data: avatarObjects, error: listError } = await supabase.storage
+    .from("avatars")
+    .list(userId, { limit: 100 });
+  if (listError !== null) {
+    logger.error("profiles.delete_account_avatar_list_failed", { userId });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+  if (avatarObjects.length > 0) {
+    const { error: removeError } = await supabase.storage
+      .from("avatars")
+      .remove(avatarObjects.map((object) => `${userId}/${object.name}`));
+    if (removeError !== null) {
+      logger.error("profiles.delete_account_avatar_remove_failed", { userId });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+  }
+
+  const serviceRole = createSupabaseServiceRoleClient();
+  const { error: deleteError } = await serviceRole.auth.admin.deleteUser(userId);
+  if (deleteError !== null) {
+    logger.error("profiles.delete_account_failed", { userId });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  await supabase.auth.signOut();
+  redirect("/sign-in");
 }

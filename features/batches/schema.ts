@@ -86,5 +86,19 @@ export const updateBatchSettingsInputSchema = z
   })
   .strict();
 
+// Owner deletion (PRD #6). The typed name is compared exactly — again by
+// `delete_batch` itself — so it is not trimmed here (security.md R3).
+export const deleteBatchInputSchema = z
+  .object({
+    batchId: z.string().uuid(),
+    confirmName: z.string().min(1, "Type the batch name to confirm.").max(120),
+  })
+  .strict();
+
+export const restoreBatchInputSchema = z
+  .object({ batchId: z.string().uuid() })
+  .strict();
+
 export type CreateBatchInput = z.infer<typeof createBatchInputSchema>;
+export type DeleteBatchInput = z.infer<typeof deleteBatchInputSchema>;
 export type UpdateBatchSettingsInput = z.infer<typeof updateBatchSettingsInputSchema>;

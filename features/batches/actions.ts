@@ -7,7 +7,12 @@ import { logger } from "@/lib/logging/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 
-import { createBatchInputSchema, updateBatchSettingsInputSchema } from "./schema";
+import {
+  createBatchInputSchema,
+  deleteBatchInputSchema,
+  restoreBatchInputSchema,
+  updateBatchSettingsInputSchema,
+} from "./schema";
 import { GENERIC_ERROR, type ActionResult } from "./types";
 
 /**
@@ -145,5 +150,71 @@ export async function updateBatchSettingsAction(
 
   revalidatePath(`/batches/${batchId}`);
   revalidatePath(`/batches/${batchId}/settings`);
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Owner-only soft deletion via `delete_batch` (PRD #6). The RPC re-checks
+ * ownership and the typed confirmation itself; a mismatch and a non-owner
+ * both surface here as the same generic failure.
+ */
+export async function deleteBatchAction(input: unknown): Promise<{ ok: false; error: string }> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError !== null || userData.user === null) {
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const parsed = deleteBatchInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? GENERIC_ERROR };
+  }
+
+  const { error } = await supabase.rpc("delete_batch", {
+    p_batch_id: parsed.data.batchId,
+    p_confirm_name: parsed.data.confirmName,
+  });
+
+  if (error !== null) {
+    logger.error("batches.delete_failed", {
+      userId: userData.user.id,
+      batchId: parsed.data.batchId,
+    });
+    return {
+      ok: false,
+      error: "That didn't work. Check the batch name matches exactly and try again.",
+    };
+  }
+
+  revalidatePath("/home");
+  redirect("/home");
+}
+
+/** Owner restoration within the 30-day window via `restore_batch` (PRD #6). */
+export async function restoreBatchAction(input: unknown): Promise<ActionResult> {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError !== null || userData.user === null) {
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const parsed = restoreBatchInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const { error } = await supabase.rpc("restore_batch", { p_batch_id: parsed.data.batchId });
+
+  if (error !== null) {
+    logger.error("batches.restore_failed", {
+      userId: userData.user.id,
+      batchId: parsed.data.batchId,
+    });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  revalidatePath("/home");
   return { ok: true, data: undefined };
 }

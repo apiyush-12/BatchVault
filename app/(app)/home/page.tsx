@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Archive, Plus } from "lucide-react";
 
 import { SignOutButton } from "@/features/authentication/components/sign-out-button";
-import { listMyBatches } from "@/features/batches/queries";
+import { DeletedBatchesList } from "@/features/batches/components/deleted-batches-list";
+import { listMyBatches, listMyDeletedBatches } from "@/features/batches/queries";
 import { PendingInviteRedirect } from "@/features/invitations/components/pending-invite-redirect";
 import { getOwnProfile } from "@/features/profiles/queries";
 
@@ -15,7 +16,11 @@ export const metadata = { title: "BatchVault" };
  * feed here (design.md §15).
  */
 export default async function HomePage() {
-  const [profile, myBatches] = await Promise.all([getOwnProfile(), listMyBatches()]);
+  const [profile, myBatches, deletedBatches] = await Promise.all([
+    getOwnProfile(),
+    listMyBatches(),
+    listMyDeletedBatches(),
+  ]);
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-10 px-5 py-10 sm:px-8">
@@ -78,6 +83,8 @@ export default async function HomePage() {
             </Link>
           </div>
         )}
+
+        {deletedBatches.length > 0 && <DeletedBatchesList batches={deletedBatches} />}
 
         <p>
           <Link

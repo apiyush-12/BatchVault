@@ -22,6 +22,15 @@ export interface MyBatch {
   role: BatchRole;
 }
 
+/** An owned batch scheduled for deletion (PRD #6). */
+export interface DeletedBatch {
+  id: string;
+  name: string;
+  deletedAt: string;
+  restorableUntil: string;
+  restorable: boolean;
+}
+
 export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };

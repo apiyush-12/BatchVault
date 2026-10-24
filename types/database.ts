@@ -963,6 +963,43 @@ export type Database = {
           storage_path: string
         }[]
       }
+      delete_batch: {
+        Args: { p_batch_id: string; p_confirm_name: string }
+        Returns: undefined
+      }
+      list_batch_storage_objects: {
+        Args: { p_batch_id: string; p_limit?: number }
+        Returns: {
+          bucket_id: string
+          name: string
+        }[]
+      }
+      list_my_deleted_batches: {
+        Args: never
+        Returns: {
+          deleted_at: string
+          id: string
+          name: string
+          restorable: boolean
+          restorable_until: string
+        }[]
+      }
+      list_reapable_batches: { Args: { p_limit?: number }; Returns: string[] }
+      operator_remove_content: {
+        Args: {
+          p_reason: string
+          p_target_id: string
+          p_target_kind: Database["public"]["Enums"]["report_target_kind"]
+        }
+        Returns: undefined
+      }
+      operator_takedown_batch: {
+        Args: { p_batch_id: string; p_reason: string }
+        Returns: undefined
+      }
+      prepare_account_deletion: { Args: never; Returns: undefined }
+      purge_batch: { Args: { p_batch_id: string }; Returns: boolean }
+      restore_batch: { Args: { p_batch_id: string }; Returns: undefined }
       my_batch_role: {
         Args: { p_batch_id: string }
         Returns: Database["public"]["Enums"]["batch_role"]

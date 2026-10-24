@@ -3,7 +3,7 @@ import "server-only";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { BatchRole } from "@/lib/authz/roles";
 
-import type { Batch, JoinPolicy, MyBatch } from "./types";
+import type { Batch, DeletedBatch, JoinPolicy, MyBatch } from "./types";
 
 const BATCH_COLUMNS =
   "id, name, institution_name, course_name, department_name, graduation_year, section, description, join_policy, created_at, updated_at" as const;
@@ -88,4 +88,26 @@ export async function getBatchById(batchId: string): Promise<Batch | null> {
     throw error;
   }
   return data === null ? null : mapBatchRow(data);
+}
+
+/**
+ * Batches the caller owns that are scheduled for deletion (PRD #6), for the
+ * restore list on /home. Ordinary batch reads never surface these, so this
+ * goes through `list_my_deleted_batches`, which returns only the caller's own.
+ */
+export async function listMyDeletedBatches(): Promise<DeletedBatch[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("list_my_deleted_batches");
+
+  if (error !== null) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    deletedAt: row.deleted_at,
+    restorableUntil: row.restorable_until,
+    restorable: row.restorable,
+  }));
 }

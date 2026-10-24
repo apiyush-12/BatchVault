@@ -44,3 +44,12 @@ export const avatarObjectPathSchema = z
 
 export type OnboardingInput = z.infer<typeof onboardingInputSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileInputSchema>;
+
+// Account deletion (security.md R3, R4): typed `DELETE`, re-checked server-side.
+export const deleteAccountInputSchema = z
+  .object({
+    confirm: z.literal("DELETE", { error: "Type DELETE to confirm." }),
+  })
+  .strict();
+
+export type DeleteAccountInput = z.infer<typeof deleteAccountInputSchema>;

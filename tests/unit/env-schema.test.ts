@@ -148,13 +148,19 @@ describe("server environment schema", () => {
     ).toThrow(/SUPABASE_SERVICE_ROLE_KEY/);
   });
 
-  it("accepts a service-role secret", () => {
+  it("accepts a service-role secret and a cron secret", () => {
     const parsed = parseEnv(
       serverEnvSchema,
-      { SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT },
+      { SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT, CRON_SECRET: "test-cron-secret-0123456789" },
       "server",
     );
     expect(parsed.SUPABASE_SERVICE_ROLE_KEY).toBe(SERVICE_ROLE_JWT);
+  });
+
+  it("requires the cron secret (Phase 4B)", () => {
+    expect(() =>
+      parseEnv(serverEnvSchema, { SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT }, "server"),
+    ).toThrow(/CRON_SECRET/);
   });
 });
 

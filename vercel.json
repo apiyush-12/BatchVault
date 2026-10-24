@@ -1,9 +1,6 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    {
-      "path": "/api/cron/sweep-media",
-      "schedule": "0 */6 * * *"
-    }
+    { "path": "/api/cron/sweep-media", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/reap-batches", "schedule": "30 3 * * *" }
   ]
 }

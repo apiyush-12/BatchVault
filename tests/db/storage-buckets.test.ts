@@ -54,18 +54,17 @@ describe("foundation Storage buckets", () => {
     expect(rows.map((row) => row.id)).toEqual([]);
   });
 
-  it("adds only the Phase 1+2 avatar policies, and nothing for batch-media", async () => {
-    const { rows } = await client.query<{ policyname: string; qual: string | null }>(
-      `select policyname, qual::text as qual from pg_policies
+  it("has exactly the shipped avatar and batch-media policies, with no client batch-media delete", async () => {
+    const { rows } = await client.query<{ policyname: string; cmd: string; qual: string | null }>(
+      `select policyname, cmd, qual::text as qual from pg_policies
         where schemaname = 'storage' and tablename = 'objects'`,
     );
     const names = rows.map((row) => row.policyname).sort();
 
-    // Deny-by-default remains correct for batch-media: those policies arrive
-    // with the flow they protect in Phase 4A, not before.
-    // `avatars_select_shared_batch` is Phase 2's additive co-member read
-    // policy (security.md §6.1) — it OR-combines with `avatars_select_own`,
-    // which is unchanged.
+    // Avatars: Phase 1 own-folder policies + Phase 2's co-member read
+    // (security.md §6.1). batch-media: Phase 4A's own-pending write/read and
+    // the member read of ready media. No client DELETE on batch-media —
+    // object removal is service-role only, object-first (security.md §24).
     expect(names).toEqual(
       [
         "avatars_delete_own",
@@ -73,11 +72,15 @@ describe("foundation Storage buckets", () => {
         "avatars_select_own",
         "avatars_select_shared_batch",
         "avatars_update_own",
+        "batch_media_insert_own_pending",
+        "batch_media_select_own_pending",
+        "batch_media_select_ready",
+        "batch_media_update_own_pending",
       ].sort(),
     );
-    expect(rows.every((row) => !(row.qual ?? "").includes("batch-media"))).toBe(
-      true,
-    );
+    expect(
+      rows.some((row) => row.cmd === "DELETE" && row.policyname.startsWith("batch_media")),
+    ).toBe(false);
   });
 
   it("keeps row level security enabled on storage.objects", async () => {

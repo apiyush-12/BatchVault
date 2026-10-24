@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
+import { DeleteAccountForm } from "@/features/profiles/components/delete-account-form";
 import { ProfileSettingsForm } from "@/features/profiles/components/profile-settings-form";
 import { getOwnAvatarUrl, getOwnProfile } from "@/features/profiles/queries";
 
@@ -32,6 +33,8 @@ export default async function SettingsPage() {
           initialAvatarUrl={avatarUrl}
         />
       )}
+
+      <DeleteAccountForm />
     </div>
   );
 }

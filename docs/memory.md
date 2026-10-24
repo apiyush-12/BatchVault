@@ -14,6 +14,64 @@ The product is **not**: a generic social network, an Instagram/TikTok/WhatsApp c
 
 ## Current Phase
 
+**FINAL COMPLETION PASS (2026-10-24): Phase 8B (minimum) + Phase 9 release blockers — COMPLETE. The MVP is feature-complete and deployable.** Nothing has been committed.
+
+### Decisions resolved (in their source documents)
+
+- **PRD #6** — soft delete, 30-day grace, owner-only, typed batch-name confirmation, owner restore inside the window, then an object-first scheduled purge; an operator takedown is not owner-restorable (PRD.md).
+- **Q3 / B3** — account deletion **blocked pending transfer** while the caller actively owns a live batch (database.md Q3; security.md B3).
+- **Q7** — accepted as designed: `audit_logs.batch_id` SET NULL on purge, readable by service role only (database.md Q7).
+- **R3** — no re-authentication in MVP; typed confirmation re-validated server-side (security.md R3).
+- **Q9 / R10** — export **DEFERRED post-MVP**; no export surface ships (database.md Q9).
+- **B4** — minimum operator capability (below) plus a written operating policy (security.md B4).
+- **R4** — honest deletion wording shipped on /settings; legal review is an external action (security.md R4).
+- **R9** — verified against hosted Storage: declared `Content-Type` served, no `nosniff`/`Content-Disposition`; accepted because the allowlist is inert-only and media is served from the Supabase origin (security.md R9).
+- **R6** — already resolved in Phase 4B; not reopened.
+
+### What was built
+
+- **Migration `20261024130000_phase8b_9_lifecycle_and_operator.sql`** (applied with `supabase db push --linked`; ledger repaired first for `20261018170000`/`20261024120000`, now 17/17 local==remote):
+  - `my_batch_role` now also requires `batches.deleted_at IS NULL` — the single predicate every content policy and RPC uses, so a deleted batch is invisible everywhere at once (rows, roster, comments, reactions, batch-media Storage reads, writes).
+  - `delete_batch(batch_id, confirm_name)` (owner-only, exact name, audited), `restore_batch(batch_id)` (active owner, inside 30 days, refuses operator takedowns, audited), `list_my_deleted_batches()`.
+  - `prepare_account_deletion()` — raises `owns_active_batch` while the caller owns a live batch.
+  - Reaper, service_role only: `list_reapable_batches`, `list_batch_storage_objects`, `purge_batch` (refuses while any Storage object remains under the batch prefix, so object-first is DB-enforced). The 30-day window is fixed in SQL.
+  - B4, service_role only: `operator_remove_content(kind, id, reason)`, `operator_takedown_batch(batch_id, reason)` — audited with actor NULL and `detail.operator = true`; `restore_content` now refuses to undo an operator removal. Run from the Supabase SQL editor/service-role connection; there is no operator UI.
+  - All grants follow the B5 revoke-all-then-grant pattern. `types/database.ts` hand-extended (regenerating drops the hand-maintained nullable RPC args).
+- **App:** owner-only "Delete this batch" section on batch settings; "Scheduled for deletion" list with Restore on /home; "Delete your account" on /settings (typed `DELETE` → `prepare_account_deletion` → own avatar objects removed → `auth.admin.deleteUser` on the caller's own id → sign out). New cron route `app/api/cron/reap-batches` (secret first, bounded, object-first) added to `vercel.json` daily at 03:30 UTC.
+- **Dependencies:** `next` and `eslint-config-next` 16.3.4 → **16.4.3** (critical Next advisories fixed), `zod` 4.6.7, `source-map-js` override `>=1.2.2` in `pnpm-workspace.yaml`.
+- **Stale tests corrected (not product changes):** foundation-migrations scope test (now asserts only post-MVP tables are absent), storage-buckets policy-list test (now lists the shipped batch-media policies and asserts no client batch-media DELETE), env-schema unit test (`CRON_SECRET` has been required since Phase 4B).
+
+### Gates actually run (all against hosted `BatchVault-Dev`)
+
+| Gate | Result |
+|---|---|
+| `pnpm lint` | PASS |
+| `pnpm typecheck` | PASS |
+| `pnpm build` | PASS (includes `/api/cron/reap-batches`) |
+| `pnpm test` (unit) | PASS, 50/50 |
+| `pnpm test:db` (full; run because the central `my_batch_role` predicate changed) | 230/232 on the full run; the 2 failures were stale phase-boundary assertions, corrected and re-run: PASS. New `tests/db/lifecycle-operator.test.ts`: 17/17 |
+| E2E `gallery-comment-reaction-flow` (critical MVP path) | PASS (desktop). First attempt timed out on a cold Playwright-launched server; passed against a warm server |
+| E2E new `lifecycle-flow` (delete → restore → owner blocked → delete → account deleted → sign-in refused) | PASS (desktop) |
+| E2E `batch-creation-flow` | main test PASS; the "not-available" test fails with `--workers 1` only: pre-existing test-isolation defect (two tests share one `beforeAll` user, so the second is not at `/onboarding`). Not an app defect |
+| `pnpm run audit` (`--prod --audit-level high`) | PASS, no known vulnerabilities |
+| Secrets sweep | Only `.env.example` tracked; pattern hits were the local-CLI default URL and a fake fixture key |
+
+### Deferred (optional / post-MVP — recorded, not built)
+
+- Hard-reaping of individually soft-deleted memories/comments past PRD #5's 30 days (whole-batch reaping is built).
+- Export (Q9/R10); re-authentication/MFA before destructive actions (R3); operator UI (B4 stays SQL-editor only).
+- Dev-only audit advisories (brace-expansion via eslint, vite/@vitest/mocker via vitest); not shipped to production.
+- Per-batch quotas (R7); backup/restore rehearsal (R8); comment author self-delete; UI/motion polish; the batch-creation E2E isolation fix.
+
+### External deployment actions (user)
+
+1. Create the production Supabase project; `supabase link --project-ref <prod>` then `supabase db push` (all 17 migrations).
+2. Vercel env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SITE_URL` (prod origin), `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET` (16+ chars; Vercel Cron sends it as `Authorization: Bearer`).
+3. Supabase Auth: Site URL and redirect allowlist for the production domain; custom SMTP (the default email sender rate-limits).
+4. Enable backups/PITR on the production project; legal review of the R4 deletion wording.
+
+### Previous pass
+
 **COMPLETION-FIRST session (2026-10-24): Phases 5A, 5B, 6, and 8A (minimal) — COMPLETE.** Implemented in one session per explicit "finish the MVP core loop quickly" instruction. Scope, decisions, and gates are recorded concisely below (full per-phase narrative detail was intentionally skipped per this session's own instructions — see earlier phase sections for that style). **Nothing has been committed.**
 
 ### What was built
@@ -627,17 +685,17 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 - **PRD #7** — member memory edit/delete rights and any time limit → Phase 4B. ✅ **RESOLVED (Phase 4B, 2026-10-24):** edit only (no time limit); no author self-delete — removal stays mod+ only (PRD.md "Unresolved" item 7).
 - **Q2** — reaction `kind` allowlist → Phase 6. ✅ **RESOLVED (2026-10-24):** a small fixed set — `like`, `love`, `laugh`, `wow`, `sad` (database.md Q2).
 - **PRD #5** — retention policy for removed/reported content → Phase 8A. ✅ **RESOLVED (2026-10-24):** soft delete, 30-day window (PRD.md item 5) — the hard-reaping sweep itself is not yet built (named gap).
-- **PRD #6** — batch-deletion mechanics (immediate vs. grace period) → Phase 8B.
-- **B3 / Q3** — owner-account-deletion behavior (block-pending-transfer / auto-promote / claimable-ownerless) → Phase 8B; the account-deletion flow must not ship without it.
-- **Q7** — audit rows after batch hard-delete (`batch_id` becomes `NULL`) → Phase 8B.
-- **Q9 / R10** — export scope and format → Phase 8B; until decided, **no export surface ships**.
-- **R3** — whether re-authentication is added before destructive actions → Phase 8B.
+- **PRD #6** — ✅ RESOLVED (2026-10-24): soft delete, 30-day grace, object-first reap.
+- **B3 / Q3** — ✅ RESOLVED (2026-10-24): block pending transfer (`prepare_account_deletion`).
+- **Q7** — ✅ RESOLVED (2026-10-24): accepted as designed.
+- **Q9 / R10** — DEFERRED post-MVP (2026-10-24); **no export surface ships**.
+- **R3** — ✅ RESOLVED (2026-10-24): typed confirmation only; re-auth deferred.
 
 **D — Release blockers**
 - **B1** — EXIF/GPS handling must be implemented/closed before release (also C).
-- **B4** — platform-level moderation path for a hostile owner / illegal content; a missing capability, not yet designed.
-- **R9** — actual Supabase Storage response headers must be verified before release.
-- **R4** — account deletion does not delete contributions: honest user-facing wording plus legal review.
+- **B4** — ✅ RESOLVED to minimum (2026-10-24): service-role operator RPCs + operating policy.
+- **R9** — ✅ VERIFIED (2026-10-24): accepted with the inert-allowlist compensation.
+- **R4** — ✅ wording shipped (2026-10-24); legal review is an external action.
 
 **E — Accepted / tracked risks (no gate)**
 - **R5** — audit trail loses actor identity on account deletion (action/time/frozen role survive).
@@ -670,7 +728,7 @@ Classified by the Prompt 11 audit. The classification matters: **nothing blocks 
 
 ## Next Task
 
-**Commit Phase 2 through Phase 8A** (the entire usable MVP core loop), then continue only on explicit instruction toward: Phase 8B (gated — B3/Q3, PRD #6, Q7, R10/Q9 all still need deciding) and Phase 9 (production readiness — B4, R9, R4, R6 release gates; full historical regression suite; backups/restore rehearsal; `pnpm audit`).
+**Commit the final pass**, then perform the external deployment actions listed under "Current Phase". No further implementation phase is planned for the MVP; post-MVP work starts only on explicit instruction.
 
 Nothing has been committed yet.
 

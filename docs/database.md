@@ -1247,7 +1247,7 @@ Post-MVP, designed but **not created**: `albums`, `album_memories`, `memory_peop
 
 **Q2 — Reaction `kind` allowlist. ✅ RESOLVED (Phase 6, 2026-10-24):** a small fixed set — `like`, `love`, `laugh`, `wow`, `sad` — CHECK-constrained `text` (not an enum), exactly as this section already anticipated, so the set can still move in either direction without a column-type migration.
 
-**Q3 — Owner account deletion.** The schema enforces *at most* one owner but cannot enforce *at least* one. When an owner deletes their account, does the system block deletion until transfer, auto-promote the longest-serving admin, or allow a temporarily ownerless batch that admins can claim? This is the most consequential open item, because it is the one that can leave a batch structurally stuck.
+**Q3 — Owner account deletion. ✅ RESOLVED** (Phase 8B): **block deletion pending transfer.** Account deletion is refused while the caller is the active owner of any batch that is not soft-deleted; they must transfer ownership (Phase 3B) or delete the batch first. This is the only one of the three options that never produces an ownerless or auto-reassigned batch. A batch already soft-deleted (within its grace period) does not block — it is reaped on schedule regardless of whether an owner remains.
 
 **Q4 — Image derivatives.** **✅ RESOLVED (Phase 4A): option (a), Supabase Storage image transformations.** Requested by URL parameter on the same signed URL at read time; no derivative-asset rows, no `derived_from_media_asset_id` self-FK, no schema change — the schema stays exactly as this section already describes. Chosen for Phase 4A's own simplicity (no pipeline to own); the paid-plan dependency this option carries (architecture §9) is accepted.
 
@@ -1255,11 +1255,11 @@ Post-MVP, designed but **not created**: `albums`, `album_memories`, `memory_peop
 
 **Q6 — Counter columns.** No `comment_count` / `reaction_count` in MVP. If the gallery measurably needs them, decide then between a maintained counter (needs a trigger, which the current rules discourage) and a periodically reconciled cache.
 
-**Q7 — Audit rows after batch hard-delete.** `batch_id` becomes NULL, placing the row outside every batch-scoped policy and reachable only by service role. Correct, or should the audit log retain an unenforced batch reference so the trail stays queryable?
+**Q7 — Audit rows after batch hard-delete. ✅ RESOLVED** (Phase 8B): **accepted as designed.** `audit_logs.batch_id` is `ON DELETE SET NULL`, so surviving rows (including the `batch_deleted` record itself) fall outside every batch-scoped policy and are reachable only via the service role / operator. The batch is gone; its members have no remaining claim on its trail. No unenforced shadow reference is added.
 
 **Q8 — Locked time-capsule visibility.** Is a sealed capsule's existence visible to the batch (a box you can see but not open) or entirely hidden? Schema supports both; product must choose before the feature ships.
 
-**Q9 — Export scope and format.** Per-member vs whole-batch, and the archival format. Unconstrained by this schema, but needed before export tooling is built.
+**Q9 — Export scope and format. DEFERRED POST-MVP** (Phase 8B). Not decided; therefore, per phases.md Phase 8B, **no export surface ships in MVP**. Unconstrained by this schema, but needed before export tooling is built.
 
 **Q10 — UUID generation.** `gen_random_uuid()` (v4) is used throughout. Random v4 keys have poor B-tree insert locality at scale. UUIDv7 would improve it and remains a drop-in change; not worth doing speculatively, worth revisiting if write volume ever justifies it.
 
