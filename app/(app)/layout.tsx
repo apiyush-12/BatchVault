@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 
+import { AppShell } from "@/components/shell/app-shell";
+import { listMyBatches } from "@/features/batches/queries";
+import { getOwnAvatarUrl, getOwnProfile } from "@/features/profiles/queries";
 import { hasCompletedOnboarding } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -11,6 +14,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  *
  * This is a real check, not the guarantee: RLS is what actually enforces
  * data access (architecture §5) — this layout only decides what the UI shows.
+ *
+ * Once the guard passes, the layout renders the shared application shell:
+ * the user's own profile and the batches they belong to feed the navigation.
+ * Both come from the same RLS-scoped queries the pages already use.
  */
 export default async function AppLayout({
   children,
@@ -29,5 +36,24 @@ export default async function AppLayout({
     redirect("/onboarding");
   }
 
-  return <>{children}</>;
+  const [profile, avatarUrl, myBatches] = await Promise.all([
+    getOwnProfile(),
+    getOwnAvatarUrl(),
+    listMyBatches(),
+  ]);
+
+  return (
+    <AppShell
+      displayName={profile?.displayName ?? null}
+      avatarUrl={avatarUrl}
+      batches={myBatches.map(({ batch }) => ({
+        id: batch.id,
+        name: batch.name,
+        institutionName: batch.institutionName,
+        graduationYear: batch.graduationYear,
+      }))}
+    >
+      {children}
+    </AppShell>
+  );
 }

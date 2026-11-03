@@ -1,7 +1,7 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-
+import { BatchFrame } from "@/components/batch/batch-frame";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { NotAvailableState } from "@/components/ui/not-available";
+import { PageHeader } from "@/components/ui/page-header";
 import { BatchSettingsForm } from "@/features/batches/components/batch-settings-form";
 import { DeleteBatchForm } from "@/features/batches/components/delete-batch-form";
 import { canDeleteBatch, canEditBatchSettings } from "@/features/batches/permissions";
@@ -38,24 +38,28 @@ export default async function BatchSettingsPage({
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col gap-8 px-5 py-10">
-      <header className="flex flex-col gap-2">
-        <Link
-          href={`/batches/${batchId}`}
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          {batch.name}
-        </Link>
-        <h1 className="text-heading-lg font-semibold">Batch settings</h1>
-      </header>
+    <BatchFrame batch={batch} role={membership.role} current="settings" action={null}>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+        <PageHeader
+          size="md"
+          title="Batch settings"
+          description="How this batch presents itself, and who can join it."
+        />
 
-      <main id="main" className="flex flex-col gap-10">
-        <BatchSettingsForm batch={batch} />
+        <Card>
+          <CardHeader>
+            <CardTitle>Identity and joining</CardTitle>
+            <CardDescription>Changes apply for everyone the moment you save.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BatchSettingsForm batch={batch} />
+          </CardContent>
+        </Card>
+
         {canDeleteBatch(membership.role) && (
           <DeleteBatchForm batchId={batch.id} batchName={batch.name} />
         )}
-      </main>
-    </div>
+      </div>
+    </BatchFrame>
   );
 }

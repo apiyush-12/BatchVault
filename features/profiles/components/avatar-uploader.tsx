@@ -83,8 +83,8 @@ export function AvatarUploader({
   }
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex size-16 items-center justify-center overflow-hidden rounded-full bg-surface-sunken">
+    <div className="flex items-center gap-5">
+      <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-soft ring-2 ring-border/60">
         {previewUrl !== null ? (
           // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL is a poor next/image cache key (architecture §9).
           <img
@@ -93,7 +93,7 @@ export function AvatarUploader({
             className="size-full object-cover"
           />
         ) : (
-          <ImagePlus aria-hidden="true" className="size-6 text-foreground-muted" />
+          <ImagePlus aria-hidden="true" className="size-7 text-primary" />
         )}
       </div>
 

@@ -1,13 +1,15 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
-import { Loader2, Video as VideoIcon } from "lucide-react";
+import { AlertTriangle, Loader2, Video as VideoIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
+import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -15,6 +17,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { finalizeMemoryAction, requestPhotoUploadAction, requestVideoUploadAction } from "../actions";
 import { finalizeMemoryInputSchema, type FinalizeMemoryInput } from "../schema";
 import { ALLOWED_VIDEO_TYPES, MAX_VIDEO_BYTES, MAX_VIDEO_DURATION_SECONDS } from "../types";
+import { UploadDropzone } from "./upload-dropzone";
+import { UploadProgress } from "./upload-progress";
 
 type Stage = "idle" | "capturing" | "uploading" | "finalizing" | "error" | "done";
 
@@ -32,7 +36,6 @@ type FormValues = Omit<FinalizeMemoryInput, "mediaAssetId" | "posterMediaAssetId
  */
 export function VideoUploadForm({ batchId }: { batchId: string }) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -110,11 +113,7 @@ export function VideoUploadForm({ batchId }: { batchId: string }) {
     });
   }
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const chosen = event.target.files?.[0];
-    if (chosen === undefined) {
-      return;
-    }
+  function acceptFile(chosen: File) {
     if (!ALLOWED_VIDEO_TYPES.includes(chosen.type as (typeof ALLOWED_VIDEO_TYPES)[number])) {
       setStage("error");
       setError("Please choose an MP4 video.");
@@ -206,106 +205,102 @@ export function VideoUploadForm({ batchId }: { batchId: string }) {
     router.push(`/batches/${batchId}/memories`);
   }
 
-  const isBusy = stage === "uploading" || stage === "finalizing";
+  const isBusy = stage === "uploading" || stage === "finalizing" || stage === "done";
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-6">
-      <div className="flex flex-col items-start gap-3">
-        <div className="flex size-40 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-sunken">
-          {previewUrl !== null ? (
-            <video src={previewUrl} muted className="size-full object-cover" />
-          ) : (
-            <VideoIcon aria-hidden="true" className="size-8 text-foreground-muted" />
-          )}
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={isBusy}
-          onClick={() => inputRef.current?.click()}
-        >
-          {file === null ? "Choose video" : "Choose a different video"}
-        </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ALLOWED_VIDEO_TYPES.join(",")}
-          className="sr-only"
-          aria-label="Video"
-          onChange={handleFileChange}
-        />
-        <p className="text-caption text-foreground-muted">
-          MP4 only, up to 100 MB. Short videos (a minute or two) work best.
-        </p>
-        {durationWarning !== null && (
-          <p className="text-caption text-warning">{durationWarning}</p>
-        )}
-      </div>
-
-      <FormField
-        label="Caption"
-        hint="Optional. Up to 2000 characters."
-        error={errors.caption?.message}
-        render={({ inputId, describedBy }) => (
-          <Textarea
-            id={inputId}
-            aria-invalid={errors.caption !== undefined}
-            aria-describedby={describedBy}
-            {...register("caption")}
-          />
-        )}
+      <UploadDropzone
+        icon={VideoIcon}
+        accept={ALLOWED_VIDEO_TYPES.join(",")}
+        inputLabel="Video"
+        hasFile={file !== null}
+        disabled={isBusy}
+        onFile={acceptFile}
+        guidance="MP4 only, up to 100 MB. Short videos (a minute or two) work best."
+        preview={
+          previewUrl !== null ? (
+            <video src={previewUrl} muted playsInline className="size-full object-contain" />
+          ) : null
+        }
       />
 
-      <FormField
-        label="Event"
-        hint="Optional."
-        error={errors.eventName?.message}
-        render={({ inputId, describedBy }) => (
-          <Input
-            id={inputId}
-            aria-invalid={errors.eventName !== undefined}
-            aria-describedby={describedBy}
-            {...register("eventName")}
-          />
-        )}
-      />
-
-      <FormField
-        label="Date"
-        error={errors.occurredOn?.message}
-        render={({ inputId, describedBy }) => (
-          <Input
-            id={inputId}
-            type="date"
-            aria-invalid={errors.occurredOn !== undefined}
-            aria-describedby={describedBy}
-            {...register("occurredOn")}
-          />
-        )}
-      />
-
-      {error !== null && (
-        <p role="alert" className="text-body-sm font-medium text-danger">
-          {error}
+      {durationWarning !== null && (
+        <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-soft px-3 py-2.5 text-body-sm text-foreground">
+          <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+          <span>{durationWarning}</span>
         </p>
       )}
 
-      <Button type="submit" disabled={isBusy || file === null} className="self-start">
-        {stage === "uploading" && (
-          <>
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            Uploading…
-          </>
-        )}
-        {stage === "finalizing" && (
-          <>
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            Saving…
-          </>
-        )}
-        {!isBusy && "Add to batch"}
-      </Button>
+      <Card>
+        <CardHeader>
+          <CardTitle>The story around it</CardTitle>
+          <CardDescription>
+            A line about the moment, the event it belonged to, and when it happened.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5">
+          <FormField
+            label="Caption"
+            hint="Optional. Up to 2000 characters."
+            error={errors.caption?.message}
+            render={({ inputId, describedBy }) => (
+              <Textarea
+                id={inputId}
+                placeholder="The walk out of the main gate, one last time…"
+                aria-invalid={errors.caption !== undefined}
+                aria-describedby={describedBy}
+                {...register("caption")}
+              />
+            )}
+          />
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormField
+              label="Event"
+              hint="Optional."
+              error={errors.eventName?.message}
+              render={({ inputId, describedBy }) => (
+                <Input
+                  id={inputId}
+                  placeholder="Graduation day"
+                  aria-invalid={errors.eventName !== undefined}
+                  aria-describedby={describedBy}
+                  {...register("eventName")}
+                />
+              )}
+            />
+
+            <FormField
+              label="Date"
+              error={errors.occurredOn?.message}
+              render={({ inputId, describedBy }) => (
+                <Input
+                  id={inputId}
+                  type="date"
+                  aria-invalid={errors.occurredOn !== undefined}
+                  aria-describedby={describedBy}
+                  {...register("occurredOn")}
+                />
+              )}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {(stage === "uploading" || stage === "finalizing") && <UploadProgress stage={stage} />}
+
+      {error !== null && <FormMessage tone="error">{error}</FormMessage>}
+
+      <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <Button type="submit" size="lg" disabled={isBusy || file === null}>
+          {isBusy && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
+          {stage === "uploading"
+            ? "Uploading…"
+            : stage === "finalizing" || stage === "done"
+              ? "Saving…"
+              : "Add to batch"}
+        </Button>
+      </div>
     </form>
   );
 }

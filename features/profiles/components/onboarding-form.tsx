@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
+import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -82,11 +83,7 @@ export function OnboardingForm({
         )}
       />
 
-      {serverError !== null && (
-        <p role="alert" className="text-body-sm font-medium text-danger">
-          {serverError}
-        </p>
-      )}
+      {serverError !== null && <FormMessage tone="error">{serverError}</FormMessage>}
 
       <Button type="submit" disabled={isSubmitting} className="mt-2">
         {isSubmitting ? "Saving…" : "Continue"}

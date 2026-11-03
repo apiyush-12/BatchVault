@@ -1,13 +1,23 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { FileClock } from "lucide-react";
 
+import { BatchFrame } from "@/components/batch/batch-frame";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { NotAvailableState } from "@/components/ui/not-available";
+import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { getMyMembership } from "@/features/memberships/queries";
 import { canViewAuditLog } from "@/features/moderation/permissions";
 import { listAuditLog } from "@/features/moderation/queries";
+import { formatTimestamp } from "@/lib/format/date";
 
 export const metadata = { title: "Audit log — BatchVault" };
+
+/** "member_removed" → "Member removed". Display only; the stored action string is untouched. */
+function humanizeAction(action: string): string {
+  const spaced = action.replace(/[_.-]+/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 /** Admin+-only audit log view (phases.md Phase 8A; database.md §3.10). */
 export default async function AuditLogPage({
@@ -33,33 +43,44 @@ export default async function AuditLogPage({
   const entries = await listAuditLog(batchId);
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-8 px-5 py-10 sm:px-8">
-      <header className="flex flex-col gap-2">
-        <Link
-          href={`/batches/${batchId}`}
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          {batch.name}
-        </Link>
-        <h1 className="text-heading-lg font-semibold">Audit log</h1>
-      </header>
+    <BatchFrame batch={batch} role={membership.role} current="audit-log" action={null}>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+        <PageHeader
+          size="md"
+          title="Audit log"
+          description="A quiet record of the moderation and management actions taken in this batch."
+        />
 
-      {entries.length === 0 ? (
-        <p className="text-body-sm text-foreground-muted">No recorded actions yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {entries.map((entry) => (
-            <li key={entry.id} className="rounded-lg border border-border bg-surface p-3 text-body-sm">
-              <span className="font-medium text-foreground">{entry.action}</span>{" "}
-              <span className="text-foreground-muted">
-                {entry.targetKind !== null ? `· ${entry.targetKind}` : ""} · {entry.actorRole ?? "unknown role"} ·{" "}
-                {new Date(entry.occurredAt).toLocaleString()}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+        {entries.length === 0 ? (
+          <EmptyState
+            icon={FileClock}
+            title="No recorded actions yet"
+            description="Approvals, role changes, removals and settings changes will appear here as they happen."
+          />
+        ) : (
+          <ol className="relative flex flex-col border-l border-border pl-6">
+            {entries.map((entry) => (
+              <li key={entry.id} className="relative flex flex-col gap-1 pb-6 last:pb-0">
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1.5 -left-[1.8rem] size-2.5 rounded-full border-2 border-background bg-border-strong"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-body-sm font-medium text-foreground">
+                    {humanizeAction(entry.action)}
+                  </span>
+                  {entry.targetKind !== null && <Badge variant="outline">{entry.targetKind}</Badge>}
+                </div>
+                <p className="text-caption text-foreground-muted">
+                  By {entry.actorRole !== null ? `a${/^[aeiou]/i.test(entry.actorRole) ? "n" : ""} ${entry.actorRole}` : "an unknown role"}
+                  {" · "}
+                  <time dateTime={entry.occurredAt}>{formatTimestamp(entry.occurredAt)}</time>
+                </p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </BatchFrame>
   );
 }

@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
+import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -85,16 +86,8 @@ export function ProfileSettingsForm({
         )}
       />
 
-      {serverError !== null && (
-        <p role="alert" className="text-body-sm font-medium text-danger">
-          {serverError}
-        </p>
-      )}
-      {saved && (
-        <p role="status" className="text-body-sm font-medium text-success">
-          Saved.
-        </p>
-      )}
+      {serverError !== null && <FormMessage tone="error">{serverError}</FormMessage>}
+      {saved && <FormMessage tone="success">Saved.</FormMessage>}
 
       <Button type="submit" disabled={isSubmitting} className="mt-2 self-start">
         {isSubmitting ? "Saving…" : "Save changes"}

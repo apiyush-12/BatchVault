@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Check, Loader2, UserMinus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,10 @@ import type { RosterMember } from "../types";
  * Per-row membership controls (phases.md Phase 3B). Page-level/row-level
  * guards here are Layer 2 convenience only — every RPC enforces the same
  * ceiling database-side regardless (security.md §4, §11, §5.2.2).
+ *
+ * Visual grammar: approve is the one primary action on a pending row;
+ * destructive controls (decline, remove, transfer) are outlined in the danger
+ * tone and sit apart from the role control (design.md §13).
  */
 export function MemberRowActions({
   batchId,
@@ -77,12 +82,21 @@ export function MemberRowActions({
     }
 
     return (
-      <div className="flex flex-col items-end gap-2">
+      <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
         <div className="flex gap-2">
-          <Button type="button" size="sm" disabled={pending} onClick={approve}>
+          <Button type="button" size="sm" disabled={pending} onClick={approve} className="flex-1 sm:flex-none">
+            {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <Check aria-hidden="true" className="size-4" />}
             Approve
           </Button>
-          <Button type="button" variant="secondary" size="sm" disabled={pending} onClick={reject}>
+          <Button
+            type="button"
+            variant="danger-outline"
+            size="sm"
+            disabled={pending}
+            onClick={reject}
+            className="flex-1 sm:flex-none"
+          >
+            <X aria-hidden="true" className="size-4" />
             Decline
           </Button>
         </div>
@@ -104,6 +118,10 @@ export function MemberRowActions({
     (role) => role !== member.role && canAssignRole(callerRole, member.role, role),
   );
   const canTransfer = canTransferOwnership(callerRole);
+
+  if (roleOptions.length === 0 && !canRemove && !canTransfer) {
+    return null;
+  }
 
   async function remove() {
     if (!window.confirm(`Remove ${member.displayName ?? "this member"} from the batch?`)) {
@@ -133,13 +151,14 @@ export function MemberRowActions({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div className="flex items-center gap-2">
+    <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
+      <div className="flex flex-wrap items-center gap-2">
         {roleOptions.length > 0 && (
           <Select
             aria-label={`Change ${member.displayName ?? "member"}'s role`}
             disabled={pending}
             defaultValue=""
+            className="w-auto min-w-40 flex-1 sm:flex-none"
             onChange={(event) => {
               const value = event.target.value as BatchRole | "";
               if (value !== "") changeRole(value);
@@ -156,7 +175,8 @@ export function MemberRowActions({
           </Select>
         )}
         {canRemove && (
-          <Button type="button" variant="danger" size="sm" disabled={pending} onClick={remove}>
+          <Button type="button" variant="danger-outline" size="sm" disabled={pending} onClick={remove}>
+            <UserMinus aria-hidden="true" className="size-4" />
             Remove
           </Button>
         )}
@@ -192,7 +212,7 @@ function TransferOwnership({
 
   if (!open) {
     return (
-      <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(true)}>
+      <Button type="button" variant="ghost" size="xs" onClick={() => setOpen(true)} className="self-end">
         Transfer ownership here
       </Button>
     );
@@ -216,17 +236,18 @@ function TransferOwnership({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2 rounded-lg border border-danger/40 bg-surface-sunken p-3">
-      <p className="text-caption text-foreground-muted">
-        Type <strong>{member.displayName ?? "this member's name"}</strong> to confirm — this
-        hands over the batch and cannot be undone by you alone.
+    <div className="flex w-full flex-col gap-3 rounded-xl border border-danger/40 bg-danger-soft/40 p-4 sm:max-w-sm">
+      <p className="text-body-sm text-foreground">
+        <span className="font-semibold text-danger">Transfer ownership.</span> Type{" "}
+        <strong>{member.displayName ?? "this member's name"}</strong> to confirm — this hands
+        over the batch and cannot be undone by you alone.
       </p>
       <Input
         aria-label="Type the member's name to confirm ownership transfer"
         value={confirmText}
         onChange={(event) => setConfirmText(event.target.value)}
       />
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
           Cancel
         </Button>

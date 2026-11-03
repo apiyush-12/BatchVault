@@ -2,10 +2,12 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
+import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 
 import { deleteAccountAction } from "../actions";
@@ -41,9 +43,10 @@ export function DeleteAccountForm() {
   return (
     <section
       aria-labelledby="delete-account-heading"
-      className="flex flex-col gap-4 rounded-lg border border-danger/40 p-5"
+      className="flex flex-col gap-4 rounded-xl border border-danger/30 bg-danger-soft/30 p-5 sm:p-6"
     >
-      <h2 id="delete-account-heading" className="text-heading-sm font-semibold">
+      <h2 id="delete-account-heading" className="flex items-center gap-2 text-heading-sm font-semibold text-danger">
+        <TriangleAlert aria-hidden="true" className="size-5" />
         Delete your account
       </h2>
       <div className="flex flex-col gap-2 text-body-sm text-foreground-muted">
@@ -75,13 +78,9 @@ export function DeleteAccountForm() {
           )}
         />
 
-        {serverError !== null && (
-          <p role="alert" className="text-body-sm font-medium text-danger">
-            {serverError}
-          </p>
-        )}
+        {serverError !== null && <FormMessage tone="error">{serverError}</FormMessage>}
 
-        <Button type="submit" variant="danger" disabled={!confirmed || isSubmitting}>
+        <Button type="submit" variant="danger" className="self-start" disabled={!confirmed || isSubmitting}>
           {isSubmitting ? "Deleting…" : "Delete account"}
         </Button>
       </form>

@@ -2,11 +2,29 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Check, Flag, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { formatTimestamp } from "@/lib/format/date";
 
 import { removeContentAction, resolveReportAction } from "../actions";
-import type { Report } from "../types";
+import type { Report, ReportReason, ReportTargetKind } from "../types";
+
+const REASON_LABEL: Record<ReportReason, string> = {
+  harassment: "Harassment",
+  inappropriate: "Inappropriate content",
+  privacy: "Privacy concern",
+  spam: "Spam",
+  other: "Other",
+};
+
+const TARGET_LABEL: Record<ReportTargetKind, string> = {
+  memory: "Memory",
+  comment: "Comment",
+  member: "Member",
+};
 
 /** Mod+ moderation queue (phases.md Phase 8A) — card/list language, not a data table. */
 export function ModerationQueue({ batchId, reports }: { batchId: string; reports: Report[] }) {
@@ -35,39 +53,66 @@ export function ModerationQueue({ batchId, reports }: { batchId: string; reports
   }
 
   if (reports.length === 0) {
-    return <p className="text-body-sm text-foreground-muted">No open reports.</p>;
+    return (
+      <EmptyState
+        icon={ShieldCheck}
+        title="No open reports"
+        description="When a member reports a memory or comment, it shows up here for a quiet, deliberate decision."
+      />
+    );
   }
 
   return (
     <ul className="flex flex-col gap-3">
-      {reports.map((report) => (
-        <li key={report.id} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-body-sm font-medium text-foreground">
-              {report.targetKind} · {report.reason}
-            </span>
-            <span className="text-caption text-foreground-muted">
-              {new Date(report.createdAt).toLocaleDateString()}
-            </span>
-          </div>
-          {report.details !== null && <p className="text-body-sm text-foreground-muted">{report.details}</p>}
-          <div className="flex gap-2">
-            {report.targetKind !== "member" && (
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={pendingId === report.id}
-                onClick={() => handleRemove(report)}
-              >
-                Remove content
-              </Button>
+      {reports.map((report) => {
+        const busy = pendingId === report.id;
+        return (
+          <li
+            key={report.id}
+            className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4 shadow-raised sm:p-5"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="warning">
+                    <Flag aria-hidden="true" />
+                    {REASON_LABEL[report.reason]}
+                  </Badge>
+                  <Badge variant="outline">{TARGET_LABEL[report.targetKind]}</Badge>
+                </div>
+                <p className="text-caption text-foreground-muted">
+                  Reported {formatTimestamp(report.createdAt)}
+                </p>
+              </div>
+            </div>
+
+            {report.details !== null && (
+              <p className="rounded-md bg-surface-sunken px-3 py-2.5 text-body-sm whitespace-pre-wrap text-foreground">
+                {report.details}
+              </p>
             )}
-            <Button size="sm" variant="secondary" disabled={pendingId === report.id} onClick={() => handleResolve(report.id)}>
-              Dismiss
-            </Button>
-          </div>
-        </li>
-      ))}
+
+            {report.targetKind === "member" && (
+              <p className="text-caption text-foreground-muted">
+                Member reports are handled from the Members page, where removal has its own confirmation.
+              </p>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+              <Button size="sm" variant="secondary" disabled={busy} onClick={() => handleResolve(report.id)}>
+                {busy ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <Check aria-hidden="true" className="size-4" />}
+                Dismiss
+              </Button>
+              {report.targetKind !== "member" && (
+                <Button size="sm" variant="danger-outline" disabled={busy} onClick={() => handleRemove(report)}>
+                  <Trash2 aria-hidden="true" className="size-4" />
+                  Remove content
+                </Button>
+              )}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }

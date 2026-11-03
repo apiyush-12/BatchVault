@@ -1,13 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Link2 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { revokeInviteAction } from "../actions";
 import type { Invite } from "../types";
 import { InviteCreateForm } from "./invite-create-form";
+
+const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
 
 function isUsable(invite: Invite, now: Date): boolean {
   if (invite.revokedAt !== null) return false;
@@ -26,19 +30,36 @@ function CopyLinkRow({ url }: { url: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-sunken p-4">
-      <p className="text-body-sm font-medium text-foreground">
-        Share this link with your classmates. It won&rsquo;t be shown again.
-      </p>
+    <div
+      role="status"
+      className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary-soft/60 p-4 sm:p-5"
+    >
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Link2 aria-hidden="true" className="size-4" />
+        </span>
+        <div className="flex flex-col gap-0.5">
+          <p className="text-body font-semibold text-foreground">Your invite link is ready</p>
+          <p className="text-body-sm text-foreground-muted">
+            Share this link with your classmates. It won&rsquo;t be shown again, so copy it now.
+          </p>
+        </div>
+      </div>
       <div className="flex items-center gap-2">
-        <code className="flex-1 truncate rounded-md border border-border bg-surface px-3 py-2 text-caption text-foreground-muted">
+        <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface px-3 py-2.5 text-caption text-foreground-muted">
           {url}
         </code>
-        <Button type="button" variant="secondary" size="icon" onClick={copy} aria-label="Copy invite link">
+        <Button type="button" variant={copied ? "soft" : "primary"} onClick={copy} className="shrink-0">
           {copied ? (
-            <Check aria-hidden="true" className="size-4" />
+            <>
+              <Check aria-hidden="true" className="size-4" />
+              Copied
+            </>
           ) : (
-            <Copy aria-hidden="true" className="size-4" />
+            <>
+              <Copy aria-hidden="true" className="size-4" />
+              Copy link
+            </>
           )}
         </Button>
       </div>
@@ -61,19 +82,24 @@ function InviteRow({ invite, batchId }: { invite: Invite; batchId: string }) {
     }
   }
 
+  const status = usable ? "Active" : invite.revokedAt !== null ? "Revoked" : "Expired or used up";
+
   return (
-    <li className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface p-4">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-body-sm font-medium text-foreground">
-          {usable ? "Active" : invite.revokedAt !== null ? "Revoked" : "Expired or used up"}
-        </span>
-        <span className="text-caption text-foreground-muted">
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 shadow-raised">
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={usable ? "success" : "neutral"}>{status}</Badge>
+          <span className="text-caption text-foreground-muted">
+            Created {dateFormat.format(new Date(invite.createdAt))}
+          </span>
+        </div>
+        <span className="text-body-sm text-foreground-muted">
           Used {invite.useCount}
-          {invite.maxUses !== null ? ` / ${invite.maxUses}` : ""} time
+          {invite.maxUses !== null ? ` of ${invite.maxUses}` : ""} time
           {invite.useCount === 1 ? "" : "s"}
           {invite.expiresAt !== null
-            ? ` · expires ${new Date(invite.expiresAt).toLocaleDateString()}`
-            : ""}
+            ? ` · expires ${dateFormat.format(new Date(invite.expiresAt))}`
+            : " · no expiry"}
         </span>
         {error !== null && (
           <span role="alert" className="text-caption font-medium text-danger">
@@ -82,7 +108,7 @@ function InviteRow({ invite, batchId }: { invite: Invite; batchId: string }) {
         )}
       </div>
       {usable && (
-        <Button type="button" variant="danger" size="sm" onClick={revoke} disabled={isRevoking}>
+        <Button type="button" variant="danger-outline" size="sm" onClick={revoke} disabled={isRevoking}>
           {isRevoking ? "Revoking…" : "Revoke"}
         </Button>
       )}
@@ -96,16 +122,31 @@ export function InviteManager({ batchId, invites }: { batchId: string; invites: 
 
   return (
     <div className="flex flex-col gap-8">
-      <InviteCreateForm batchId={batchId} onCreated={setLastCreatedUrl} />
-
       {lastCreatedUrl !== null && <CopyLinkRow url={lastCreatedUrl} />}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>New invite link</CardTitle>
+          <CardDescription>
+            Both limits are optional. A link with no limit works until you revoke it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <InviteCreateForm batchId={batchId} onCreated={setLastCreatedUrl} />
+        </CardContent>
+      </Card>
+
       {invites.length > 0 && (
-        <ul className="flex flex-col gap-3">
-          {invites.map((invite) => (
-            <InviteRow key={invite.id} invite={invite} batchId={batchId} />
-          ))}
-        </ul>
+        <section aria-labelledby="existing-invites-heading" className="flex flex-col gap-3">
+          <h2 id="existing-invites-heading" className="text-heading-sm font-semibold">
+            Existing links
+          </h2>
+          <ul className="flex flex-col gap-3">
+            {invites.map((invite) => (
+              <InviteRow key={invite.id} invite={invite} batchId={batchId} />
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

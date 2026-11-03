@@ -1,13 +1,15 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
+import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -20,20 +22,19 @@ import {
   isLikelyHeic,
   MAX_IMAGE_BYTES,
 } from "../types";
+import { UploadDropzone } from "./upload-dropzone";
+import { UploadProgress } from "./upload-progress";
 
 type Stage = "idle" | "uploading" | "finalizing" | "error" | "done";
 
 /**
  * The upload flow (phases.md Phase 4A; architecture §8). Honest progress
- * and retry states (design.md §18) — a plain dedicated page rather than a
- * drawer/sheet overlay, since no such primitive is vendored in this repo
- * yet (the same simplification Phase 3B's confirmation controls recorded);
- * a future UI-polish pass can move this into a drawer without touching the
- * Server Actions.
+ * and retry states (design.md §18). The two-phase pipeline — server-issued
+ * signed path, direct browser upload, server-side finalize — is unchanged;
+ * this pass only reshaped the surface around it.
  */
 export function PhotoUploadForm({ batchId }: { batchId: string }) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -48,11 +49,7 @@ export function PhotoUploadForm({ batchId }: { batchId: string }) {
     defaultValues: { occurredOn: new Date().toISOString().slice(0, 10) },
   });
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const chosen = event.target.files?.[0];
-    if (chosen === undefined) {
-      return;
-    }
+  function acceptFile(chosen: File) {
     if (!ALLOWED_IMAGE_TYPES.includes(chosen.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {
       // R6 (resolved 2026-10-24, security.md R6): HEIC/HEIF gets specific,
       // actionable guidance instead of a generic rejection — a best-effort
@@ -121,102 +118,96 @@ export function PhotoUploadForm({ batchId }: { batchId: string }) {
     router.push(`/batches/${batchId}/memories`);
   }
 
-  const isBusy = stage === "uploading" || stage === "finalizing";
+  const isBusy = stage === "uploading" || stage === "finalizing" || stage === "done";
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-6">
-      <div className="flex flex-col items-start gap-3">
-        <div className="flex size-40 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-sunken">
-          {previewUrl !== null ? (
+      <UploadDropzone
+        icon={ImagePlus}
+        accept={ALLOWED_IMAGE_TYPES.join(",")}
+        inputLabel="Photo"
+        hasFile={file !== null}
+        disabled={isBusy}
+        onFile={acceptFile}
+        guidance="JPEG, PNG, WebP, or GIF, up to 15 MB."
+        preview={
+          previewUrl !== null ? (
             // eslint-disable-next-line @next/next/no-img-element -- a local object URL, not a Storage URL (architecture §9).
-            <img src={previewUrl} alt="Selected photo preview" className="size-full object-cover" />
-          ) : (
-            <ImagePlus aria-hidden="true" className="size-8 text-foreground-muted" />
-          )}
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={isBusy}
-          onClick={() => inputRef.current?.click()}
-        >
-          {file === null ? "Choose photo" : "Choose a different photo"}
+            <img src={previewUrl} alt="Selected photo preview" className="size-full object-contain" />
+          ) : null
+        }
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>The story around it</CardTitle>
+          <CardDescription>
+            A line about the moment, the event it belonged to, and when it happened.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5">
+          <FormField
+            label="Caption"
+            hint="Optional. Up to 2000 characters."
+            error={errors.caption?.message}
+            render={({ inputId, describedBy }) => (
+              <Textarea
+                id={inputId}
+                placeholder="Last night in the hostel before everyone left…"
+                aria-invalid={errors.caption !== undefined}
+                aria-describedby={describedBy}
+                {...register("caption")}
+              />
+            )}
+          />
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormField
+              label="Event"
+              hint="Optional."
+              error={errors.eventName?.message}
+              render={({ inputId, describedBy }) => (
+                <Input
+                  id={inputId}
+                  placeholder="Farewell night"
+                  aria-invalid={errors.eventName !== undefined}
+                  aria-describedby={describedBy}
+                  {...register("eventName")}
+                />
+              )}
+            />
+
+            <FormField
+              label="Date"
+              error={errors.occurredOn?.message}
+              render={({ inputId, describedBy }) => (
+                <Input
+                  id={inputId}
+                  type="date"
+                  aria-invalid={errors.occurredOn !== undefined}
+                  aria-describedby={describedBy}
+                  {...register("occurredOn")}
+                />
+              )}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {(stage === "uploading" || stage === "finalizing") && <UploadProgress stage={stage} />}
+
+      {error !== null && <FormMessage tone="error">{error}</FormMessage>}
+
+      <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <Button type="submit" size="lg" disabled={isBusy || file === null}>
+          {isBusy && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
+          {stage === "uploading"
+            ? "Uploading…"
+            : stage === "finalizing" || stage === "done"
+              ? "Saving…"
+              : "Add to batch"}
         </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ALLOWED_IMAGE_TYPES.join(",")}
-          className="sr-only"
-          aria-label="Photo"
-          onChange={handleFileChange}
-        />
-        <p className="text-caption text-foreground-muted">JPEG, PNG, WebP, or GIF, up to 15 MB.</p>
       </div>
-
-      <FormField
-        label="Caption"
-        hint="Optional. Up to 2000 characters."
-        error={errors.caption?.message}
-        render={({ inputId, describedBy }) => (
-          <Textarea
-            id={inputId}
-            aria-invalid={errors.caption !== undefined}
-            aria-describedby={describedBy}
-            {...register("caption")}
-          />
-        )}
-      />
-
-      <FormField
-        label="Event"
-        hint="Optional."
-        error={errors.eventName?.message}
-        render={({ inputId, describedBy }) => (
-          <Input
-            id={inputId}
-            aria-invalid={errors.eventName !== undefined}
-            aria-describedby={describedBy}
-            {...register("eventName")}
-          />
-        )}
-      />
-
-      <FormField
-        label="Date"
-        error={errors.occurredOn?.message}
-        render={({ inputId, describedBy }) => (
-          <Input
-            id={inputId}
-            type="date"
-            aria-invalid={errors.occurredOn !== undefined}
-            aria-describedby={describedBy}
-            {...register("occurredOn")}
-          />
-        )}
-      />
-
-      {error !== null && (
-        <p role="alert" className="text-body-sm font-medium text-danger">
-          {error}
-        </p>
-      )}
-
-      <Button type="submit" disabled={isBusy || file === null} className="self-start">
-        {stage === "uploading" && (
-          <>
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            Uploading…
-          </>
-        )}
-        {stage === "finalizing" && (
-          <>
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            Saving…
-          </>
-        )}
-        {!isBusy && "Add to batch"}
-      </Button>
     </form>
   );
 }

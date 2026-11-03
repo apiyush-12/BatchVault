@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { EyeOff } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 
 /**
  * The one shared "can't show this" state (design.md §20; security.md §3,
@@ -9,18 +12,20 @@ import Link from "next/link";
  */
 export function NotAvailableState() {
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col items-center justify-center gap-4 px-5 py-10 text-center">
-      <p className="text-heading-md font-semibold">Can&rsquo;t show this</p>
-      <p className="max-w-prose text-body text-foreground-muted">
-        This page isn&rsquo;t available. It may not exist, or you may not have
-        access to it.
-      </p>
-      <Link
-        href="/home"
-        className="font-medium text-primary underline-offset-4 hover:underline"
-      >
-        Back to home
-      </Link>
+    <div className="mx-auto flex min-h-[60dvh] max-w-sm flex-col items-center justify-center gap-5 px-5 py-16 text-center">
+      <span className="flex size-14 items-center justify-center rounded-full bg-surface-sunken text-foreground-muted">
+        <EyeOff aria-hidden="true" className="size-6" />
+      </span>
+      <div className="flex flex-col gap-2">
+        <p className="font-display text-heading-md text-foreground">Can&rsquo;t show this</p>
+        <p className="max-w-prose text-body text-foreground-muted">
+          This page isn&rsquo;t available. It may not exist, or you may not have
+          access to it.
+        </p>
+      </div>
+      <Button asChild variant="secondary">
+        <Link href="/home">Back to home</Link>
+      </Button>
     </div>
   );
 }

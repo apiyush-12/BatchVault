@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { Flag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 import { createReportAction } from "../actions";
 import { REPORT_REASONS, type ReportReason, type ReportTargetKind } from "../types";
+
+const REASON_LABEL: Record<ReportReason, string> = {
+  harassment: "Harassment",
+  inappropriate: "Inappropriate content",
+  privacy: "Privacy concern",
+  spam: "Spam",
+  other: "Something else",
+};
 
 /**
  * Deliberately quiet for ordinary members (security.md §18) — a plain
@@ -21,7 +31,11 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   if (status === "sent") {
-    return <p className="text-caption text-foreground-muted">Thanks — this has been reported to the moderators.</p>;
+    return (
+      <p role="status" className="text-caption text-foreground-muted">
+        Thanks — this has been reported to the moderators.
+      </p>
+    );
   }
 
   if (!open) {
@@ -29,8 +43,9 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-caption text-foreground-muted underline hover:text-foreground"
+        className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-caption text-foreground-muted transition-colors hover:text-foreground"
       >
+        <Flag aria-hidden="true" className="size-3.5" />
         Report
       </button>
     );
@@ -38,7 +53,7 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
 
   return (
     <form
-      className="flex flex-col gap-2 rounded-lg border border-border bg-surface-sunken p-3"
+      className="flex w-full flex-col gap-3 rounded-xl border border-border bg-surface-sunken/70 p-4"
       onSubmit={async (event) => {
         event.preventDefault();
         setStatus("sending");
@@ -51,29 +66,39 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
         setStatus(result.ok ? "sent" : "error");
       }}
     >
-      <Select value={reason} onChange={(event) => setReason(event.target.value as ReportReason)} aria-label="Reason">
-        {REPORT_REASONS.map((value) => (
-          <option key={value} value={value}>
-            {value}
-          </option>
-        ))}
-      </Select>
+      <p className="text-body-sm font-medium text-foreground">Report this {targetKind}</p>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`report-reason-${targetId}`}>Reason</Label>
+        <Select
+          id={`report-reason-${targetId}`}
+          value={reason}
+          onChange={(event) => setReason(event.target.value as ReportReason)}
+        >
+          {REPORT_REASONS.map((value) => (
+            <option key={value} value={value}>
+              {REASON_LABEL[value]}
+            </option>
+          ))}
+        </Select>
+      </div>
       <Textarea
+        aria-label="Details for moderators"
         placeholder="Anything else moderators should know? (optional)"
+        className="min-h-20"
         value={details}
         onChange={(event) => setDetails(event.target.value)}
       />
       {status === "error" && (
-        <p role="alert" className="text-caption text-danger">
+        <p role="alert" className="text-caption font-medium text-danger">
           Something went wrong. Please try again.
         </p>
       )}
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
         <Button type="submit" size="sm" disabled={status === "sending"}>
           Submit report
-        </Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(false)}>
-          Cancel
         </Button>
       </div>
     </form>

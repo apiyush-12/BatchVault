@@ -1,7 +1,6 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-
+import { BatchFrame } from "@/components/batch/batch-frame";
 import { NotAvailableState } from "@/components/ui/not-available";
+import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { InviteManager } from "@/features/invitations/components/invite-manager";
 import { canManageInvites } from "@/features/invitations/permissions";
@@ -40,21 +39,19 @@ export default async function BatchInvitePage({
   const invites = await listBatchInvites(batchId);
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col gap-8 px-5 py-10">
-      <header className="flex flex-col gap-2">
-        <Link
-          href={`/batches/${batchId}`}
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          {batch.name}
-        </Link>
-        <h1 className="text-heading-lg font-semibold">Invite classmates</h1>
-      </header>
-
-      <main id="main">
+    <BatchFrame batch={batch} role={membership.role} current="invite" action={null}>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+        <PageHeader
+          size="md"
+          title="Invite classmates"
+          description={
+            batch.joinPolicy === "invite_only_requires_approval"
+              ? "Share a link. Anyone who opens it can ask to join, and you approve each request."
+              : "Share a link. Anyone who opens it joins straight away."
+          }
+        />
         <InviteManager batchId={batchId} invites={invites} />
-      </main>
-    </div>
+      </div>
+    </BatchFrame>
   );
 }

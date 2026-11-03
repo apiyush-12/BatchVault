@@ -1,3 +1,7 @@
+import Link from "next/link";
+
+import { AuthShell } from "@/components/shell/auth-shell";
+import { Button } from "@/components/ui/button";
 import { UpdatePasswordForm } from "@/features/authentication/components/update-password-form";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -16,22 +20,25 @@ export default async function ResetPasswordPage() {
 
   if (data.user === null) {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-4 px-5 py-10">
-        <h1 className="text-heading-lg font-semibold">Link expired</h1>
-        <p className="text-body text-foreground-muted">
-          This password reset link is invalid or has already been used.
-          Request a new one from the sign-in page.
-        </p>
-      </div>
+      <AuthShell
+        title="Link expired"
+        description="This password reset link is invalid or has already been used."
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-body-sm text-foreground-muted">
+            Request a new one from the sign-in page and open it on this device.
+          </p>
+          <Button asChild variant="secondary">
+            <Link href="/forgot-password">Request a new link</Link>
+          </Button>
+        </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-8 px-5 py-10">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-heading-lg font-semibold">Set a new password</h1>
-      </header>
+    <AuthShell title="Set a new password" description="Choose something you don't use anywhere else.">
       <UpdatePasswordForm />
-    </div>
+    </AuthShell>
   );
 }

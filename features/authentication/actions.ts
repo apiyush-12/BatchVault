@@ -13,7 +13,12 @@ import {
   signUpInputSchema,
   updatePasswordInputSchema,
 } from "./schema";
-import { GENERIC_AUTH_ERROR, GENERIC_ERROR, type ActionResult } from "./types";
+import {
+  GENERIC_AUTH_ERROR,
+  GENERIC_ERROR,
+  GENERIC_SIGN_UP_ERROR,
+  type ActionResult,
+} from "./types";
 
 /**
  * Server Actions for the authentication domain (architecture §18.1).
@@ -55,7 +60,9 @@ export async function signUpAction(
     logger.warn("authentication.sign_up_failed", {
       code: error.code ?? "unknown",
     });
-    return { ok: false, error: GENERIC_AUTH_ERROR };
+    // Sign-up-specific wording, still generic: never reveals whether the
+    // address already exists or what Auth actually rejected (security.md §3).
+    return { ok: false, error: GENERIC_SIGN_UP_ERROR };
   }
 
   if (data.session !== null) {

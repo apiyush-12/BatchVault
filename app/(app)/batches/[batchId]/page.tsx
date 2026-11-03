@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { ArrowLeft, FileClock, Image as ImageIcon, Settings, Shield, UserPlus, Users } from "lucide-react";
+import { ArrowRight, Clock, Images, Plus, UserPlus, Users } from "lucide-react";
 
+import { BatchFrame } from "@/components/batch/batch-frame";
+import { MemoryCard } from "@/components/memory/memory-card";
+import { MemoryGrid } from "@/components/memory/memory-grid";
+import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { NotAvailableState } from "@/components/ui/not-available";
 import { getBatchById } from "@/features/batches/queries";
-import { canEditBatchSettings } from "@/features/batches/permissions";
 import { canManageInvites } from "@/features/invitations/permissions";
-import { getMyMembership } from "@/features/memberships/queries";
-import { canModerate, canViewAuditLog } from "@/features/moderation/permissions";
+import { listGalleryPage } from "@/features/memories/queries";
+import { getMyMembership, listBatchMembers } from "@/features/memberships/queries";
 
 export async function generateMetadata({
   params,
@@ -18,7 +24,14 @@ export async function generateMetadata({
   return { title: batch !== null ? `${batch.name} — BatchVault` : "BatchVault" };
 }
 
-/** Batch home/identity (phases.md Phase 2). */
+const PREVIEW_COUNT = 8;
+
+/**
+ * Batch home/identity (phases.md Phase 2): the room you walk into. The most
+ * recent memories (the gallery's first page, nothing extra), who's here, and
+ * the way deeper. All data comes from the same RLS-scoped queries the
+ * section pages already use.
+ */
 export default async function BatchHomePage({
   params,
 }: {
@@ -36,111 +49,128 @@ export default async function BatchHomePage({
     return <NotAvailableState />;
   }
 
-  const canEditSettings = canEditBatchSettings(membership.role);
+  const [{ memories, nextCursor }, members] = await Promise.all([
+    listGalleryPage(batchId, null, PREVIEW_COUNT),
+    listBatchMembers(batchId),
+  ]);
+
+  const activeMembers = members.filter((member) => member.status === "active");
+  const pendingCount = members.filter((member) => member.status === "pending").length;
   const canInvite = canManageInvites(membership.role);
-  const canModerateBatch = canModerate(membership.role);
-  const canSeeAuditLog = canViewAuditLog(membership.role);
+  const hasMore = nextCursor !== null;
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-8 px-5 py-10 sm:px-8">
-      <header className="flex flex-col gap-2">
-        <Link
-          href="/home"
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          All batches
-        </Link>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-heading-lg font-semibold">{batch.name}</h1>
-            <p className="text-body-sm text-foreground-muted">
-              {batch.institutionName}
-              {batch.courseName !== null ? ` · ${batch.courseName}` : ""}
-              {batch.graduationYear !== null ? ` · ${batch.graduationYear}` : ""}
-            </p>
-          </div>
-          <span className="inline-flex items-center rounded-full border border-border bg-surface px-3 py-1 text-caption font-medium text-foreground-muted">
-            🔒 Private
-          </span>
-        </div>
-      </header>
-
+    <BatchFrame batch={batch} role={membership.role} current="overview" headingLevel="h1">
       {batch.description !== null && (
-        <p className="max-w-prose text-body text-foreground-muted">
-          {batch.description}
-        </p>
+        <p className="max-w-prose text-body text-foreground-muted">{batch.description}</p>
       )}
 
-      <nav className="flex flex-col gap-3">
-        <Link
-          href={`/batches/${batch.id}/memories`}
-          className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-        >
-          <ImageIcon aria-hidden="true" className="size-5 text-primary" />
-          <span className="text-body font-medium text-foreground">Memories</span>
-        </Link>
+      <section aria-labelledby="recent-memories-heading" className="flex flex-col gap-4">
+        <div className="flex items-end justify-between gap-4">
+          <h2 id="recent-memories-heading" className="font-display text-heading-sm text-foreground">
+            {memories.length === 0 ? "Your gallery" : "Latest in the gallery"}
+          </h2>
+          {memories.length > 0 && (
+            <Link
+              href={`/batches/${batchId}/memories`}
+              className="inline-flex min-h-9 items-center gap-1 text-body-sm font-medium text-primary hover:underline"
+            >
+              {hasMore ? "See everything" : "Open the gallery"}
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          )}
+        </div>
 
-        <Link
-          href={`/batches/${batch.id}/timeline`}
-          className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-        >
-          <ImageIcon aria-hidden="true" className="size-5 text-primary" />
-          <span className="text-body font-medium text-foreground">Timeline</span>
-        </Link>
-
-        <Link
-          href={`/batches/${batch.id}/members`}
-          className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-        >
-          <Users aria-hidden="true" className="size-5 text-primary" />
-          <span className="text-body font-medium text-foreground">Members</span>
-        </Link>
-
-        {canInvite && (
-          <Link
-            href={`/batches/${batch.id}/invite`}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-          >
-            <UserPlus aria-hidden="true" className="size-5 text-primary" />
-            <span className="text-body font-medium text-foreground">Invite classmates</span>
-          </Link>
+        {memories.length === 0 ? (
+          <EmptyState
+            icon={Images}
+            title="No memories yet"
+            description="This is where your batch's photos and videos will live. Add the first one — a hostel corridor, a fest night, the last day."
+            action={
+              <Button asChild>
+                <Link href={`/batches/${batchId}/upload`}>
+                  <Plus aria-hidden="true" className="size-4" />
+                  Add the first memory
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <MemoryGrid>
+            {memories.map((memory) => (
+              <li key={memory.id}>
+                <MemoryCard memory={memory} batchId={batchId} />
+              </li>
+            ))}
+          </MemoryGrid>
         )}
+      </section>
 
-        {canModerateBatch && (
-          <Link
-            href={`/batches/${batch.id}/moderation`}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-          >
-            <Shield aria-hidden="true" className="size-5 text-primary" />
-            <span className="text-body font-medium text-foreground">Moderation queue</span>
-          </Link>
-        )}
+      <section aria-labelledby="people-heading" className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 id="people-heading" className="flex items-center gap-2 text-heading-sm font-semibold">
+                <Users aria-hidden="true" className="size-5 text-primary" />
+                People
+              </h2>
+              <Link
+                href={`/batches/${batchId}/members`}
+                className="text-body-sm font-medium text-primary hover:underline"
+              >
+                Everyone
+              </Link>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-2">
+                {activeMembers.slice(0, 6).map((member) => (
+                  <Avatar
+                    key={member.profileId}
+                    src={member.avatarUrl}
+                    name={member.displayName}
+                    size="md"
+                    className="ring-2 ring-surface"
+                  />
+                ))}
+              </div>
+              <p className="text-body-sm text-foreground-muted">
+                {activeMembers.length === 1
+                  ? "Just you so far"
+                  : `${activeMembers.length} classmates here`}
+                {pendingCount > 0 && canInvite
+                  ? ` · ${pendingCount} waiting for approval`
+                  : ""}
+              </p>
+            </div>
+            {canInvite && (
+              <Button asChild variant="soft" size="sm" className="self-start">
+                <Link href={`/batches/${batchId}/invite`}>
+                  <UserPlus aria-hidden="true" className="size-4" />
+                  Invite classmates
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
-        {canSeeAuditLog && (
-          <Link
-            href={`/batches/${batch.id}/audit-log`}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-          >
-            <FileClock aria-hidden="true" className="size-5 text-primary" />
-            <span className="text-body font-medium text-foreground">Audit log</span>
-          </Link>
-        )}
-
-        {canEditSettings && (
-          <Link
-            href={`/batches/${batch.id}/settings`}
-            className="flex items-center gap-3 rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-sunken"
-          >
-            <Settings aria-hidden="true" className="size-5 text-primary" />
-            <span className="text-body font-medium text-foreground">Batch settings</span>
-          </Link>
-        )}
-      </nav>
-
-      <p className="text-body text-foreground-muted">
-        Memories, invites, and everything else arrive in the next phases.
-      </p>
-    </div>
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <h2 className="flex items-center gap-2 text-heading-sm font-semibold">
+              <Clock aria-hidden="true" className="size-5 text-primary" />
+              Through the years
+            </h2>
+            <p className="text-body-sm text-foreground-muted">
+              Walk the batch&rsquo;s story in order — first days to farewell — grouped by year.
+            </p>
+            <Button asChild variant="secondary" size="sm" className="self-start">
+              <Link href={`/batches/${batchId}/timeline`}>
+                Open the timeline
+                <ArrowRight aria-hidden="true" className="size-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
+    </BatchFrame>
   );
 }

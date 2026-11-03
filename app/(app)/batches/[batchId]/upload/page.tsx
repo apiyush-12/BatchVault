@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { ArrowLeft, Video } from "lucide-react";
+import { Video } from "lucide-react";
 
+import { BatchFrame } from "@/components/batch/batch-frame";
 import { NotAvailableState } from "@/components/ui/not-available";
+import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { PhotoUploadForm } from "@/features/media/components/photo-upload-form";
 import { getMyMembership } from "@/features/memberships/queries";
@@ -25,28 +27,24 @@ export default async function UploadPhotoPage({
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col gap-8 px-5 py-10">
-      <header className="flex flex-col gap-2">
-        <Link
-          href={`/batches/${batchId}`}
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          {batch.name}
-        </Link>
-        <h1 className="text-heading-lg font-semibold">Add a memory</h1>
-      </header>
-
-      <main id="main" className="flex flex-col gap-6">
+    <BatchFrame batch={batch} role={membership.role} current="upload" action={null}>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+        <PageHeader
+          size="md"
+          title="Add a memory"
+          description="One photo, with the story around it. It's kept exactly as you took it."
+          actions={
+            <Link
+              href={`/batches/${batchId}/upload/video`}
+              className="inline-flex min-h-9 items-center gap-2 rounded-md text-body-sm font-medium text-primary hover:underline"
+            >
+              <Video aria-hidden="true" className="size-4" />
+              Add a short video instead
+            </Link>
+          }
+        />
         <PhotoUploadForm batchId={batchId} />
-        <Link
-          href={`/batches/${batchId}/upload/video`}
-          className="inline-flex items-center gap-2 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <Video aria-hidden="true" className="size-4" />
-          Add a short video instead
-        </Link>
-      </main>
-    </div>
+      </div>
+    </BatchFrame>
   );
 }

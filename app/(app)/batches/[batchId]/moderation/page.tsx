@@ -1,7 +1,6 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-
+import { BatchFrame } from "@/components/batch/batch-frame";
 import { NotAvailableState } from "@/components/ui/not-available";
+import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { getMyMembership } from "@/features/memberships/queries";
 import { ModerationQueue } from "@/features/moderation/components/moderation-queue";
@@ -34,19 +33,19 @@ export default async function ModerationPage({
   const reports = await listOpenReports(batchId);
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-8 px-5 py-10 sm:px-8">
-      <header className="flex flex-col gap-2">
-        <Link
-          href={`/batches/${batchId}`}
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          {batch.name}
-        </Link>
-        <h1 className="text-heading-lg font-semibold">Moderation queue</h1>
-      </header>
-
-      <ModerationQueue batchId={batchId} reports={reports} />
-    </div>
+    <BatchFrame batch={batch} role={membership.role} current="moderation" action={null}>
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
+        <PageHeader
+          size="md"
+          title="Moderation queue"
+          description={
+            reports.length === 0
+              ? "Reports from members land here. Nothing needs your attention right now."
+              : `${reports.length} open ${reports.length === 1 ? "report" : "reports"} waiting for a decision.`
+          }
+        />
+        <ModerationQueue batchId={batchId} reports={reports} />
+      </div>
+    </BatchFrame>
   );
 }

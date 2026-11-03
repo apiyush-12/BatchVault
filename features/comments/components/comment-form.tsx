@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,22 +41,29 @@ export function CommentForm({ memoryId }: { memoryId: string }) {
       <Textarea
         aria-label="Write a comment"
         placeholder="Write a comment…"
+        className="min-h-20"
         {...register("body")}
       />
       {errors.body !== undefined && (
-        <p role="alert" className="text-caption text-danger">
+        <p role="alert" className="text-caption font-medium text-danger">
           {errors.body.message}
         </p>
       )}
       {error !== null && (
-        <p role="alert" className="text-caption text-danger">
+        <p role="alert" className="text-caption font-medium text-danger">
           {error}
         </p>
       )}
-      <Button type="submit" size="sm" disabled={isSubmitting} className="self-start">
-        {isSubmitting && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
-        Post
-      </Button>
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+          ) : (
+            <Send aria-hidden="true" className="size-4" />
+          )}
+          Post
+        </Button>
+      </div>
     </form>
   );
 }

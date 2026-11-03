@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
+import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -97,11 +98,7 @@ export function EditMemoryForm({ batchId, memory }: { batchId: string; memory: M
         )}
       />
 
-      {error !== null && (
-        <p role="alert" className="text-body-sm font-medium text-danger">
-          {error}
-        </p>
-      )}
+      {error !== null && <FormMessage tone="error">{error}</FormMessage>}
 
       <Button type="submit" disabled={isSaving} className="self-start">
         {isSaving && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}

@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Archive, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FormMessage } from "@/components/ui/form-message";
 
 import { restoreBatchAction } from "../actions";
 import type { DeletedBatch } from "../types";
@@ -29,18 +31,24 @@ export function DeletedBatchesList({ batches }: { batches: DeletedBatch[] }) {
   }
 
   return (
-    <section aria-labelledby="deleted-batches-heading" className="flex flex-col gap-3">
-      <h2 id="deleted-batches-heading" className="text-heading-sm font-semibold">
-        Scheduled for deletion
-      </h2>
-      <ul className="flex flex-col gap-3">
+    <section
+      aria-labelledby="deleted-batches-heading"
+      className="flex flex-col gap-3 rounded-xl border border-dashed border-border-strong/70 p-4 sm:p-5"
+    >
+      <div className="flex items-center gap-2">
+        <Archive aria-hidden="true" className="size-4 text-foreground-muted" />
+        <h2 id="deleted-batches-heading" className="text-heading-sm font-semibold">
+          Scheduled for deletion
+        </h2>
+      </div>
+      <ul className="flex flex-col gap-2">
         {batches.map((batch) => (
           <li
             key={batch.id}
-            className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface p-4"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface px-4 py-3"
           >
-            <span className="flex flex-col gap-1">
-              <span className="text-body font-semibold text-foreground">{batch.name}</span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-body font-semibold text-foreground">{batch.name}</span>
               <span className="text-body-sm text-foreground-muted">
                 {batch.restorable
                   ? `Permanently deleted after ${dateFormat.format(new Date(batch.restorableUntil))}`
@@ -55,17 +63,14 @@ export function DeletedBatchesList({ batches }: { batches: DeletedBatch[] }) {
                 disabled={pending}
                 onClick={() => restore(batch.id)}
               >
+                <RotateCcw aria-hidden="true" className="size-4" />
                 Restore
               </Button>
             )}
           </li>
         ))}
       </ul>
-      {error !== null && (
-        <p role="alert" className="text-body-sm font-medium text-danger">
-          {error}
-        </p>
-      )}
+      {error !== null && <FormMessage tone="error">{error}</FormMessage>}
     </section>
   );
 }

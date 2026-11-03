@@ -1,7 +1,8 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-
+import { FadeIn } from "@/components/motion/fade-in";
+import { BackLink } from "@/components/ui/back-link";
+import { Card, CardContent } from "@/components/ui/card";
 import { NotAvailableState } from "@/components/ui/not-available";
+import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { EditMemoryForm } from "@/features/memories/components/edit-memory-form";
 import { getMemoryById } from "@/features/memories/queries";
@@ -45,21 +46,17 @@ export default async function EditMemoryPage({
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-sm flex-col gap-8 px-5 py-10">
-      <header className="flex flex-col gap-2">
-        <Link
-          href={`/batches/${batchId}/memories`}
-          className="inline-flex items-center gap-1 text-body-sm font-medium text-foreground-muted hover:text-foreground"
-        >
-          <ArrowLeft aria-hidden="true" className="size-4" />
-          {batch.name}
-        </Link>
-        <h1 className="text-heading-lg font-semibold">Edit memory</h1>
-      </header>
-
-      <main id="main">
-        <EditMemoryForm batchId={batchId} memory={memory} />
-      </main>
-    </div>
+    <FadeIn className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-8 pb-10">
+      <PageHeader
+        eyebrow={<BackLink href={`/batches/${batchId}/memories/${memoryId}`}>Back to the memory</BackLink>}
+        title="Edit memory"
+        description="Change the caption, event or date. The photo or video itself stays exactly as it was."
+      />
+      <Card>
+        <CardContent>
+          <EditMemoryForm batchId={batchId} memory={memory} />
+        </CardContent>
+      </Card>
+    </FadeIn>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Clock, EyeOff, Loader2, Mail } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +18,20 @@ type ViewState =
   | { kind: "valid"; batchName: string }
   | { kind: "joining"; batchName: string }
   | { kind: "joined"; batchName: string; status: "active" | "pending" };
+
+function StateIcon({ icon: Icon, tone }: { icon: typeof Mail; tone: "primary" | "muted" | "warning" }) {
+  const toneClass =
+    tone === "primary"
+      ? "bg-primary-soft text-primary"
+      : tone === "warning"
+        ? "bg-warning-soft text-warning"
+        : "bg-surface-sunken text-foreground-muted";
+  return (
+    <span className={`mb-4 flex size-14 items-center justify-center rounded-full ${toneClass}`}>
+      <Icon aria-hidden="true" className="size-6" />
+    </span>
+  );
+}
 
 /**
  * The invite landing/redemption page (phases.md Phase 3A; security.md §9,
@@ -87,34 +102,40 @@ export function InviteLandingView() {
 
   if (state.kind === "loading") {
     return (
-      <p role="status" className="text-body text-foreground-muted">
-        Checking your invite…
-      </p>
+      <div className="flex flex-col items-center">
+        <StateIcon icon={Loader2} tone="muted" />
+        <p role="status" className="text-body text-foreground-muted">
+          Checking your invite…
+        </p>
+      </div>
     );
   }
 
   if (state.kind === "invalid") {
     return (
-      <div className="flex flex-col gap-3 text-center">
-        <p className="text-heading-md font-semibold">Can&rsquo;t show this</p>
+      <div className="flex flex-col items-center gap-3">
+        <StateIcon icon={EyeOff} tone="muted" />
+        <p className="font-display text-heading-md text-foreground">Can&rsquo;t show this</p>
         <p className="max-w-prose text-body text-foreground-muted">{GENERIC_INVITE_ERROR}</p>
-        <Link href="/home" className="font-medium text-primary underline-offset-4 hover:underline">
-          Back to home
-        </Link>
+        <Button asChild variant="secondary" className="mt-2">
+          <Link href="/home">Back to home</Link>
+        </Button>
       </div>
     );
   }
 
   if (state.kind === "joined" && state.status === "pending") {
     return (
-      <div className="flex flex-col gap-3 text-center">
-        <p className="text-heading-md font-semibold">Request sent</p>
+      <div className="flex flex-col items-center gap-3">
+        <StateIcon icon={Clock} tone="warning" />
+        <p className="font-display text-heading-md text-foreground">Request sent</p>
         <p className="max-w-prose text-body text-foreground-muted">
-          Your request to join <strong>{state.batchName}</strong> is waiting for approval.
+          Your request to join <strong className="text-foreground">{state.batchName}</strong> is waiting
+          for approval. You&rsquo;ll find it on your home page once a batch admin lets you in.
         </p>
-        <Link href="/home" className="font-medium text-primary underline-offset-4 hover:underline">
-          Back to home
-        </Link>
+        <Button asChild variant="secondary" className="mt-2">
+          <Link href="/home">Back to home</Link>
+        </Button>
       </div>
     );
   }
@@ -123,12 +144,14 @@ export function InviteLandingView() {
   const isJoining = state.kind === "joining";
 
   return (
-    <div className="flex flex-col gap-4 text-center">
-      <p className="text-heading-md font-semibold">You&rsquo;re invited</p>
+    <div className="flex flex-col items-center gap-3">
+      <StateIcon icon={Mail} tone="primary" />
+      <p className="font-display text-heading-md text-foreground">You&rsquo;re invited</p>
       <p className="max-w-prose text-body text-foreground-muted">
-        Join <strong>{batchName}</strong>&rsquo;s shared archive on BatchVault.
+        Join <strong className="text-foreground">{batchName}</strong>&rsquo;s shared archive on BatchVault.
       </p>
-      <Button type="button" onClick={join} disabled={isJoining} className="self-center">
+      <Button type="button" size="lg" onClick={join} disabled={isJoining} className="mt-3 min-w-40">
+        {isJoining && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
         {isJoining ? "Joining…" : "Join"}
       </Button>
     </div>
