@@ -48,6 +48,7 @@ export function MemberRowActions({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<BatchRole | "">("");
 
   const isSelf = member.profileId === callerProfileId;
 
@@ -147,6 +148,7 @@ export function MemberRowActions({
       setError(result.error);
       return;
     }
+    setSelectedRole("");
     router.refresh();
   }
 
@@ -154,25 +156,39 @@ export function MemberRowActions({
     <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
       <div className="flex flex-wrap items-center gap-2">
         {roleOptions.length > 0 && (
-          <Select
-            aria-label={`Change ${member.displayName ?? "member"}'s role`}
-            disabled={pending}
-            defaultValue=""
-            className="w-auto min-w-40 flex-1 sm:flex-none"
-            onChange={(event) => {
-              const value = event.target.value as BatchRole | "";
-              if (value !== "") changeRole(value);
+          // Choosing an option only stages it: arrow keys on a closed native
+          // select fire `change` on some platforms, so applying on change
+          // would let keyboard browsing alter someone's role.
+          <form
+            className="flex flex-1 flex-wrap items-center gap-2 sm:flex-none"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (selectedRole !== "") void changeRole(selectedRole);
             }}
           >
-            <option value="" disabled>
-              Change role…
-            </option>
-            {roleOptions.map((role) => (
-              <option key={role} value={role}>
-                Make {role}
+            <Select
+              aria-label={`Change ${member.displayName ?? "member"}'s role`}
+              disabled={pending}
+              value={selectedRole}
+              className="w-auto min-w-40 flex-1 sm:flex-none"
+              onChange={(event) => setSelectedRole(event.target.value as BatchRole | "")}
+            >
+              <option value="" disabled>
+                Change role…
               </option>
-            ))}
-          </Select>
+              {roleOptions.map((role) => (
+                <option key={role} value={role}>
+                  Make {role}
+                </option>
+              ))}
+            </Select>
+            {selectedRole !== "" && (
+              <Button type="submit" size="sm" variant="secondary" disabled={pending}>
+                {pending && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
+                Update role
+              </Button>
+            )}
+          </form>
         )}
         {canRemove && (
           <Button type="button" variant="danger-outline" size="sm" disabled={pending} onClick={remove}>
@@ -244,6 +260,8 @@ function TransferOwnership({
       </p>
       <Input
         aria-label="Type the member's name to confirm ownership transfer"
+        autoFocus
+        autoComplete="off"
         value={confirmText}
         onChange={(event) => setConfirmText(event.target.value)}
       />

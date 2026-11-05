@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import {
   Clock,
   FileClock,
@@ -83,10 +84,21 @@ export function BatchNav({
   const pathname = usePathname();
   const base = `/batches/${batchId}`;
   const tabs = tabsFor(permissions);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // On phones the strip scrolls horizontally; keep the current tab visible
+  // instead of leaving e.g. "Settings" off-screen at the far end.
+  useEffect(() => {
+    const list = listRef.current;
+    const active = list?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (list === null || active === null || active === undefined) return;
+    if (list.scrollWidth <= list.clientWidth) return;
+    list.scrollLeft = active.offsetLeft - (list.clientWidth - active.offsetWidth) / 2;
+  }, [pathname]);
 
   return (
     <nav aria-label="Batch sections" className="-mx-4 sm:mx-0">
-      <ul className="scrollbar-none flex gap-1 overflow-x-auto px-4 sm:px-0 sm:flex-wrap">
+      <ul ref={listRef} className="scrollbar-none relative flex gap-1 overflow-x-auto px-4 sm:px-0 sm:flex-wrap">
         {tabs.map(({ section, label, path, Icon, management }) => {
           const href = `${base}${path}`;
           const active =

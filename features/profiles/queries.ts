@@ -1,5 +1,8 @@
 import "server-only";
 
+import { cache } from "react";
+
+import { getVerifiedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type { Profile } from "./types";
@@ -33,14 +36,16 @@ function mapRow(row: ProfileRow): Profile {
  * The signed-in caller's own profile row, or `null` if none exists yet (a
  * new signup that has not completed onboarding) or no session exists
  * (architecture §6: query construction confined to this file).
+ *
+ * Memoized per request: the app shell and the page both need it.
  */
-export async function getOwnProfile(): Promise<Profile | null> {
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (userData.user === null) {
+export const getOwnProfile = cache(async (): Promise<Profile | null> => {
+  const user = await getVerifiedUser();
+  if (user === null) {
     return null;
   }
 
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("profiles")
     .select(OWN_PROFILE_COLUMNS)
@@ -51,14 +56,14 @@ export async function getOwnProfile(): Promise<Profile | null> {
     // with anyone else. `.maybeSingle()` with no WHERE clause would then
     // error (PGRST116) instead of returning the caller's own row — a real,
     // latent defect this phase's own test flow surfaced.
-    .eq("id", userData.user.id)
+    .eq("id", user.id)
     .maybeSingle();
 
   if (error !== null) {
     throw error;
   }
   return data === null ? null : mapRow(data);
-}
+});
 
 /**
  * Profiles by id — the caller's own row always, and (since Phase 2) any
@@ -112,7 +117,7 @@ export async function getAvatarUrl(avatarPath: string | null): Promise<string | 
 }
 
 /** The caller's own avatar, specifically. */
-export async function getOwnAvatarUrl(): Promise<string | null> {
+export const getOwnAvatarUrl = cache(async (): Promise<string | null> => {
   const profile = await getOwnProfile();
   return profile === null ? null : getAvatarUrl(profile.avatarPath);
-}
+});

@@ -16,8 +16,8 @@ import { getMyMembership } from "@/features/memberships/queries";
 import { ReportButton } from "@/features/moderation/components/report-button";
 import { ReactionPicker } from "@/features/reactions/components/reaction-picker";
 import { getReactionSummary } from "@/features/reactions/queries";
+import { getVerifiedUser } from "@/lib/auth/session";
 import { formatDateOnly } from "@/lib/format/date";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Memory — BatchVault" };
 
@@ -35,13 +35,17 @@ export default async function MemoryDetailPage({
   params: Promise<{ batchId: string; memoryId: string }>;
 }) {
   const { batchId, memoryId } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
 
-  const [batch, membership, memory] = await Promise.all([
+  // One round trip for everything. Comments and reactions are RLS-scoped to
+  // the same visibility as the memory, so starting them before the guard
+  // below reveals nothing — a denied caller simply gets empty results.
+  const [user, batch, membership, memory, comments, reactionSummary] = await Promise.all([
+    getVerifiedUser(),
     getBatchById(batchId),
     getMyMembership(batchId),
     getMemoryDetail(memoryId),
+    listComments(memoryId),
+    getReactionSummary(memoryId),
   ]);
 
   if (
@@ -54,12 +58,7 @@ export default async function MemoryDetailPage({
     return <NotAvailableState />;
   }
 
-  const [comments, reactionSummary] = await Promise.all([
-    listComments(memoryId),
-    getReactionSummary(memoryId),
-  ]);
-
-  const canEdit = userData.user !== null && canEditMemory(memory.createdBy, userData.user.id);
+  const canEdit = user !== null && canEditMemory(memory.createdBy, user.id);
   const isVideo = memory.mediaKind === "video";
 
   return (

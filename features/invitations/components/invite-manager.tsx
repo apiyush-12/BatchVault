@@ -22,9 +22,17 @@ function isUsable(invite: Invite, now: Date): boolean {
 
 function CopyLinkRow({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   async function copy() {
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Clipboard access can be denied (permissions, embedded browsers).
+      setCopyFailed(true);
+      return;
+    }
+    setCopyFailed(false);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -45,8 +53,8 @@ function CopyLinkRow({ url }: { url: string }) {
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface px-3 py-2.5 text-caption text-foreground-muted">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface px-3 py-2.5 text-caption text-foreground-muted select-all">
           {url}
         </code>
         <Button type="button" variant={copied ? "soft" : "primary"} onClick={copy} className="shrink-0">
@@ -63,6 +71,11 @@ function CopyLinkRow({ url }: { url: string }) {
           )}
         </Button>
       </div>
+      {copyFailed && (
+        <p role="alert" className="text-caption font-medium text-danger">
+          Couldn&rsquo;t copy automatically. Select the link above and copy it by hand.
+        </p>
+      )}
     </div>
   );
 }
@@ -73,6 +86,9 @@ function InviteRow({ invite, batchId }: { invite: Invite; batchId: string }) {
   const usable = isUsable(invite, new Date());
 
   async function revoke() {
+    if (!window.confirm("Revoke this invite link? Anyone holding it will no longer be able to join.")) {
+      return;
+    }
     setError(null);
     setIsRevoking(true);
     const result = await revokeInviteAction({ inviteId: invite.id, batchId });

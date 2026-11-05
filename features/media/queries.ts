@@ -119,14 +119,20 @@ const SIGNED_URL_TTL_SECONDS = 15 * 60;
 export async function getMediaSignedUrl(
   bucket: string,
   path: string,
-  options?: { width?: number; height?: number },
+  options?: { width?: number; height?: number; resize?: "cover" | "contain" },
 ): Promise<string | null> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(
     path,
     SIGNED_URL_TTL_SECONDS,
     options !== undefined
-      ? { transform: { width: options.width, height: options.height, resize: "cover" } }
+      ? {
+          transform: {
+            width: options.width,
+            height: options.height,
+            resize: options.resize ?? "cover",
+          },
+        }
       : undefined,
   );
 

@@ -31,3 +31,14 @@ export function formatTimestamp(value: string): string {
 export function formatTimestampDate(value: string): string {
   return dateMedium.format(new Date(value));
 }
+
+/**
+ * Today as a `YYYY-MM-DD` value for a date input, in the viewer's own
+ * timezone. `toISOString()` would give the UTC date — yesterday for an
+ * Indian user before 05:30.
+ */
+export function todayDateInputValue(now: Date = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}

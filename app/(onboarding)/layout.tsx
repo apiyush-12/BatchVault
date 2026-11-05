@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { hasCompletedOnboarding } from "@/lib/auth/session";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getVerifiedUser, hasCompletedOnboarding } from "@/lib/auth/session";
 
 /**
  * Server-side route protection for the onboarding group (architecture §4,
@@ -13,14 +12,13 @@ export default async function OnboardingLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.auth.getUser();
+  const user = await getVerifiedUser();
 
-  if (data.user === null) {
+  if (user === null) {
     redirect("/sign-in");
   }
 
-  const onboarded = await hasCompletedOnboarding(data.user.id);
+  const onboarded = await hasCompletedOnboarding(user.id);
   if (onboarded) {
     redirect("/home");
   }

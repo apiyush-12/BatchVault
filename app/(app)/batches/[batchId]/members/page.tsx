@@ -11,8 +11,8 @@ import { getBatchById } from "@/features/batches/queries";
 import { canManageInvites } from "@/features/invitations/permissions";
 import { MemberRowActions } from "@/features/memberships/components/member-row-actions";
 import { getMyMembership, listBatchMembers } from "@/features/memberships/queries";
+import { getVerifiedUser } from "@/lib/auth/session";
 import { formatTimestampDate } from "@/lib/format/date";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Members — BatchVault" };
 
@@ -28,18 +28,20 @@ export default async function BatchMembersPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
-  const supabase = await createSupabaseServerClient();
-  const [batch, membership, userResult] = await Promise.all([
+  // The roster is RLS-scoped (a non-member sees nothing, a pending requester
+  // only their own row), so it is fetched alongside the guard queries.
+  const [batch, membership, user, members] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),
-    supabase.auth.getUser(),
+    getVerifiedUser(),
+    listBatchMembers(batchId),
   ]);
 
   if (batch === null || membership === null || membership.status !== "active") {
     return <NotAvailableState />;
   }
 
-  const rawCallerProfileId = userResult.data.user?.id;
+  const rawCallerProfileId = user?.id;
   if (rawCallerProfileId === undefined) {
     return <NotAvailableState />;
   }
@@ -50,7 +52,6 @@ export default async function BatchMembersPage({
   const callerProfileId: string = rawCallerProfileId;
   const canInvite = canManageInvites(callerRole);
 
-  const members = await listBatchMembers(batchId);
   const pending = members.filter((member) => member.status === "pending");
   const active = members.filter((member) => member.status === "active");
 

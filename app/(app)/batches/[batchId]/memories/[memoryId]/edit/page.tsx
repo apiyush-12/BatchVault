@@ -8,7 +8,7 @@ import { EditMemoryForm } from "@/features/memories/components/edit-memory-form"
 import { getMemoryById } from "@/features/memories/queries";
 import { canEditMemory } from "@/features/memories/permissions";
 import { getMyMembership } from "@/features/memberships/queries";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getVerifiedUser } from "@/lib/auth/session";
 
 export const metadata = { title: "Edit memory — BatchVault" };
 
@@ -24,10 +24,9 @@ export default async function EditMemoryPage({
   params: Promise<{ batchId: string; memoryId: string }>;
 }) {
   const { batchId, memoryId } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
 
-  const [batch, membership, memory] = await Promise.all([
+  const [user, batch, membership, memory] = await Promise.all([
+    getVerifiedUser(),
     getBatchById(batchId),
     getMyMembership(batchId),
     getMemoryById(memoryId),
@@ -39,8 +38,8 @@ export default async function EditMemoryPage({
     membership.status !== "active" ||
     memory === null ||
     memory.batchId !== batchId ||
-    userData.user === null ||
-    !canEditMemory(memory.createdBy, userData.user.id)
+    user === null ||
+    !canEditMemory(memory.createdBy, user.id)
   ) {
     return <NotAvailableState />;
   }

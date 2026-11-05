@@ -18,11 +18,14 @@ export function MemoryCard({
   memory,
   batchId,
   showYear = true,
+  compact = false,
   className,
 }: {
   memory: MemoryWithMedia;
   batchId: string;
   showYear?: boolean;
+  /** For the dense grid: on phones the tile is ~100px wide, so the caption is kept for screen readers only. */
+  compact?: boolean;
   className?: string;
 }) {
   const isVideo = memory.mediaKind === "video";
@@ -72,10 +75,18 @@ export function MemoryCard({
 
       {/* Scrim with caption/meta — readable over any photo (design.md §4 overlay). This text is the link's accessible name. */}
       <span
-        className="absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-3 pt-10 pb-2.5 text-white transition-opacity duration-200"
+        className={cn(
+          "absolute inset-x-0 bottom-0 flex flex-col gap-0.5 bg-gradient-to-t from-black/70 via-black/35 to-transparent text-white transition-opacity duration-200",
+          compact ? "px-2 pt-6 pb-1.5 sm:px-3 sm:pt-10 sm:pb-2.5" : "px-3 pt-10 pb-2.5",
+        )}
       >
         {memory.caption !== null && (
-          <span className="line-clamp-2 text-body-sm font-medium leading-snug drop-shadow-sm">
+          <span
+            className={cn(
+              "line-clamp-2 text-body-sm font-medium leading-snug drop-shadow-sm",
+              compact && "max-sm:sr-only",
+            )}
+          >
             {memory.caption}
           </span>
         )}

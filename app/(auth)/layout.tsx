@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { hasCompletedOnboarding } from "@/lib/auth/session";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getVerifiedUser, hasCompletedOnboarding } from "@/lib/auth/session";
 
 /**
  * Route protection for the auth surface (architecture §4): a signed-in user
@@ -14,11 +13,10 @@ export default async function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.auth.getUser();
+  const user = await getVerifiedUser();
 
-  if (data.user !== null) {
-    const onboarded = await hasCompletedOnboarding(data.user.id);
+  if (user !== null) {
+    const onboarded = await hasCompletedOnboarding(user.id);
     redirect(onboarded ? "/home" : "/onboarding");
   }
 

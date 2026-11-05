@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Video as VideoIcon } from "lucide-react";
@@ -12,6 +12,7 @@ import { FormField } from "@/components/ui/form-field";
 import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { todayDateInputValue } from "@/lib/format/date";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 import { finalizeMemoryAction, requestPhotoUploadAction, requestVideoUploadAction } from "../actions";
@@ -50,8 +51,15 @@ export function VideoUploadForm({ batchId }: { batchId: string }) {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(finalizeMemoryInputSchema.omit({ mediaAssetId: true, posterMediaAssetId: true })),
-    defaultValues: { occurredOn: new Date().toISOString().slice(0, 10) },
+    defaultValues: { occurredOn: todayDateInputValue() },
   });
+
+  // Each preview is a blob URL holding the whole file in memory; release it
+  // when it is replaced or the form unmounts.
+  useEffect(() => {
+    if (previewUrl === null) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   /**
    * Reads real video metadata/a frame in a hidden, never-mounted <video>
@@ -219,7 +227,7 @@ export function VideoUploadForm({ batchId }: { batchId: string }) {
         guidance="MP4 only, up to 100 MB. Short videos (a minute or two) work best."
         preview={
           previewUrl !== null ? (
-            <video src={previewUrl} muted playsInline className="size-full object-contain" />
+            <video src={previewUrl} muted playsInline preload="metadata" className="size-full object-contain" />
           ) : null
         }
       />

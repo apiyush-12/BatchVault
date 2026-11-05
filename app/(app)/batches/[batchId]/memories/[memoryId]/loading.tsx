@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function MemoryDetailLoading() {
   return (
-    <div aria-busy="true" aria-label="Loading memory" className="flex flex-col gap-6">
+    <div role="status" aria-busy="true" aria-label="Loading memory" className="flex flex-col gap-6">
       <Skeleton className="h-6 w-40" />
       <div className="grid gap-8 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
         <div className="flex flex-col gap-4">

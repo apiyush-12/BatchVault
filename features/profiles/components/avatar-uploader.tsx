@@ -119,6 +119,7 @@ export function AvatarUploader({
           type="file"
           accept={ACCEPTED_TYPES.join(",")}
           className="sr-only"
+          tabIndex={-1}
           aria-label="Avatar image"
           onChange={handleFileChange}
         />

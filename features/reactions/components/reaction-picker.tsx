@@ -19,13 +19,16 @@ export function ReactionPicker({ memoryId, summary }: { memoryId: string; summar
 
   async function handleClick(kind: ReactionKind) {
     setPending(true);
-    if (summary.myReaction === kind) {
-      await removeReactionAction(memoryId);
-    } else {
-      await setReactionAction({ memoryId, kind });
+    try {
+      if (summary.myReaction === kind) {
+        await removeReactionAction(memoryId);
+      } else {
+        await setReactionAction({ memoryId, kind });
+      }
+      router.refresh();
+    } finally {
+      setPending(false);
     }
-    setPending(false);
-    router.refresh();
   }
 
   return (
@@ -40,7 +43,7 @@ export function ReactionPicker({ memoryId, summary }: { memoryId: string; summar
             disabled={pending}
             onClick={() => handleClick(kind)}
             aria-pressed={isMine}
-            aria-label={`React with ${REACTION_EMOJI[kind]} (${kind})`}
+            aria-label={`React with ${REACTION_EMOJI[kind]} (${kind})${count > 0 ? `, ${count}` : ""}`}
             className={cn(
               "inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3 text-body-sm transition-[background-color,border-color,color,transform] duration-150 active:scale-95 disabled:opacity-60",
               isMine

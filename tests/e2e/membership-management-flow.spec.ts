@@ -87,6 +87,7 @@ test("owner approves a pending request, promotes the member, then removes them",
 
   // --- Owner: promote the new member to moderator.
   await joinerRow.getByLabel(/Change Membership Joiner's role/).selectOption("moderator");
+  await joinerRow.getByRole("button", { name: "Update role" }).click();
   await expect(joinerRow.getByText("moderator", { exact: true })).toBeVisible();
 
   // --- Owner: remove the member (window.confirm must be accepted).

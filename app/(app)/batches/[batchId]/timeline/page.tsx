@@ -30,16 +30,18 @@ export default async function BatchTimelinePage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
-  const [batch, membership] = await Promise.all([
+  // The timeline read is RLS-scoped to active members, so it runs alongside
+  // the guard queries rather than after them.
+  const [batch, membership, groups] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),
+    listTimeline(batchId),
   ]);
 
   if (batch === null || membership === null || membership.status !== "active") {
     return <NotAvailableState />;
   }
 
-  const groups = await listTimeline(batchId);
   const total = groups.reduce((sum, group) => sum + group.memories.length, 0);
 
   return (
@@ -114,7 +116,7 @@ export default async function BatchTimelinePage({
                 <MemoryGrid dense>
                   {group.memories.map((memory) => (
                     <li key={memory.id}>
-                      <MemoryCard memory={memory} batchId={batchId} showYear={false} />
+                      <MemoryCard memory={memory} batchId={batchId} showYear={false} compact />
                     </li>
                   ))}
                 </MemoryGrid>

@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Loader2 } from "lucide-react";
@@ -12,6 +12,7 @@ import { FormField } from "@/components/ui/form-field";
 import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { todayDateInputValue } from "@/lib/format/date";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 import { finalizeMemoryAction, requestPhotoUploadAction } from "../actions";
@@ -46,8 +47,15 @@ export function PhotoUploadForm({ batchId }: { batchId: string }) {
     formState: { errors },
   } = useForm<Omit<FinalizeMemoryInput, "mediaAssetId">>({
     resolver: zodResolver(finalizeMemoryInputSchema.omit({ mediaAssetId: true })),
-    defaultValues: { occurredOn: new Date().toISOString().slice(0, 10) },
+    defaultValues: { occurredOn: todayDateInputValue() },
   });
+
+  // Each preview is a blob URL holding the whole file in memory; release it
+  // when it is replaced or the form unmounts.
+  useEffect(() => {
+    if (previewUrl === null) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   function acceptFile(chosen: File) {
     if (!ALLOWED_IMAGE_TYPES.includes(chosen.type as (typeof ALLOWED_IMAGE_TYPES)[number])) {

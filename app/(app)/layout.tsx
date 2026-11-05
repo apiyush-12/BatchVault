@@ -3,8 +3,7 @@ import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { listMyBatches } from "@/features/batches/queries";
 import { getOwnAvatarUrl, getOwnProfile } from "@/features/profiles/queries";
-import { hasCompletedOnboarding } from "@/lib/auth/session";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getVerifiedUser, hasCompletedOnboarding } from "@/lib/auth/session";
 
 /**
  * Server-side route protection for the authenticated surface (architecture
@@ -24,14 +23,13 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.auth.getUser();
+  const user = await getVerifiedUser();
 
-  if (data.user === null) {
+  if (user === null) {
     redirect("/sign-in");
   }
 
-  const onboarded = await hasCompletedOnboarding(data.user.id);
+  const onboarded = await hasCompletedOnboarding(user.id);
   if (!onboarded) {
     redirect("/onboarding");
   }

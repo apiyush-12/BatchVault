@@ -14,6 +14,20 @@ import { getMyMembership } from "@/features/memberships/queries";
 
 export const metadata = { title: "Memories — BatchVault" };
 
+const CURSOR_PATTERN = /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/**
+ * `?cursor=<occurred_on>_<id>`. The parts are interpolated into a PostgREST
+ * filter, so anything that is not exactly a date and a UUID is ignored and
+ * the gallery starts from the newest page.
+ */
+function parseCursor(value: string | undefined): { occurredOn: string; id: string } | null {
+  const match = value !== undefined ? CURSOR_PATTERN.exec(value) : null;
+  if (match === null) return null;
+  const [, occurredOn, id] = match;
+  return occurredOn !== undefined && id !== undefined ? { occurredOn, id } : null;
+}
+
 /**
  * The real, keyset-paginated gallery (phases.md Phase 5A) — supersedes
  * Phase 4A's "minimal verification list". Server-rendered, ordered
@@ -29,22 +43,19 @@ export default async function BatchMemoriesPage({
 }) {
   const { batchId } = await params;
   const { cursor: cursorParam } = await searchParams;
-  const [batch, membership] = await Promise.all([
+  const cursor = parseCursor(cursorParam);
+
+  // The gallery read is RLS-scoped to active members, so it runs alongside
+  // the guard queries rather than after them.
+  const [batch, membership, { memories, nextCursor }] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),
+    listGalleryPage(batchId, cursor),
   ]);
 
   if (batch === null || membership === null || membership.status !== "active") {
     return <NotAvailableState />;
   }
-
-  const cursor = (() => {
-    if (cursorParam === undefined) return null;
-    const [occurredOn, id] = cursorParam.split("_");
-    return occurredOn !== undefined && id !== undefined ? { occurredOn, id } : null;
-  })();
-
-  const { memories, nextCursor } = await listGalleryPage(batchId, cursor);
 
   return (
     <BatchFrame batch={batch} role={membership.role} current="memories">

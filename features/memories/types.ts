@@ -12,7 +12,7 @@ export interface Memory {
 
 export interface MemoryWithMedia extends Memory {
   mediaKind: MediaKind | null;
-  /** A signed URL to the primary asset — an image derivative, or the video itself. */
+  /** A signed URL to the primary asset — an image rendition, or the video itself (detail only; grid tiles never sign the video). */
   mediaUrl: string | null;
   /** A signed URL to the video's poster-frame companion image, if one was captured and linked (phases.md Phase 4B). Always `null` for image memories. */
   posterUrl: string | null;

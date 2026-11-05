@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { Loader2, Send } from "lucide-react";
@@ -14,6 +14,7 @@ import { createCommentInputSchema, type CreateCommentInput } from "../schema";
 
 export function CommentForm({ memoryId }: { memoryId: string }) {
   const router = useRouter();
+  const errorId = useId();
   const [error, setError] = useState<string | null>(null);
   const {
     register,
@@ -42,10 +43,12 @@ export function CommentForm({ memoryId }: { memoryId: string }) {
         aria-label="Write a comment"
         placeholder="Write a comment…"
         className="min-h-20"
+        aria-invalid={errors.body !== undefined}
+        aria-describedby={errors.body !== undefined ? errorId : undefined}
         {...register("body")}
       />
       {errors.body !== undefined && (
-        <p role="alert" className="text-caption font-medium text-danger">
+        <p id={errorId} role="alert" className="text-caption font-medium text-danger">
           {errors.body.message}
         </p>
       )}

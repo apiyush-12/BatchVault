@@ -30,11 +30,17 @@ const TARGET_LABEL: Record<ReportTargetKind, string> = {
 export function ModerationQueue({ batchId, reports }: { batchId: string; reports: Report[] }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ reportId: string; message: string } | null>(null);
 
   async function handleResolve(reportId: string) {
+    setFailed(null);
     setPendingId(reportId);
-    await resolveReportAction(batchId, { reportId });
+    const result = await resolveReportAction(batchId, { reportId });
     setPendingId(null);
+    if (!result.ok) {
+      setFailed({ reportId, message: result.error });
+      return;
+    }
     router.refresh();
   }
 
@@ -45,10 +51,17 @@ export function ModerationQueue({ batchId, reports }: { batchId: string; reports
     if (!window.confirm(`Remove this ${report.targetKind}? This can be restored by a moderator later.`)) {
       return;
     }
+    setFailed(null);
     setPendingId(report.id);
-    await removeContentAction(batchId, { targetKind: report.targetKind, targetId: report.targetId });
-    await resolveReportAction(batchId, { reportId: report.id, resolutionNote: "Content removed" });
+    const removed = await removeContentAction(batchId, { targetKind: report.targetKind, targetId: report.targetId });
+    // Never close the report as "Content removed" when the removal itself failed.
+    const result = removed.ok
+      ? await resolveReportAction(batchId, { reportId: report.id, resolutionNote: "Content removed" })
+      : removed;
     setPendingId(null);
+    if (!result.ok) {
+      setFailed({ reportId: report.id, message: result.error });
+    }
     router.refresh();
   }
 
@@ -95,6 +108,12 @@ export function ModerationQueue({ batchId, reports }: { batchId: string; reports
             {report.targetKind === "member" && (
               <p className="text-caption text-foreground-muted">
                 Member reports are handled from the Members page, where removal has its own confirmation.
+              </p>
+            )}
+
+            {failed?.reportId === report.id && (
+              <p role="alert" className="text-caption font-medium text-danger">
+                {failed.message}
               </p>
             )}
 

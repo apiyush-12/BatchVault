@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getMediaAssetsByIds, getMediaSignedUrl, getPrimaryMediaByMemoryIds } from "@/features/media/queries";
+import { getVerifiedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type { Memory, MemoryWithMedia } from "./types";
@@ -37,12 +38,31 @@ export interface GalleryPage {
   nextCursor: GalleryCursor | null;
 }
 
-async function attachMedia(memories: Memory[], callerId: string | null): Promise<MemoryWithMedia[]> {
+/**
+ * Which rendition a surface needs (design.md §11):
+ * - `thumbnail` — a square 480px crop for grid tiles. Tiles only ever show
+ *   the image or the video's poster, so the video itself is not signed.
+ * - `detail` — the true, uncropped aspect, bounded to 1600px, for the
+ *   memory hero. Never the full-resolution original.
+ */
+type MediaRendition = "thumbnail" | "detail";
+
+const IMAGE_TRANSFORM: Record<MediaRendition, { width: number; height: number; resize: "cover" | "contain" }> = {
+  thumbnail: { width: 480, height: 480, resize: "cover" },
+  detail: { width: 1600, height: 1600, resize: "contain" },
+};
+
+async function attachMedia(
+  memories: Memory[],
+  callerId: string | null,
+  rendition: MediaRendition = "thumbnail",
+): Promise<MemoryWithMedia[]> {
   const primaryByMemoryId = await getPrimaryMediaByMemoryIds(memories.map((memory) => memory.id));
   const posterIds = Array.from(primaryByMemoryId.values())
     .map((media) => media.posterMediaAssetId)
     .filter((id): id is string => id !== null);
   const posterById = await getMediaAssetsByIds(posterIds);
+  const transform = IMAGE_TRANSFORM[rendition];
 
   return Promise.all(
     memories.map(async (memory) => {
@@ -51,16 +71,17 @@ async function attachMedia(memories: Memory[], callerId: string | null): Promise
         return { ...memory, mediaKind: null, mediaUrl: null, posterUrl: null, isOwnMemory: memory.createdBy === callerId };
       }
 
-      const mediaUrl =
-        media.kind === "image"
-          ? await getMediaSignedUrl("batch-media", media.storagePath, { width: 480, height: 480 })
-          : await getMediaSignedUrl("batch-media", media.storagePath);
-
       const poster = media.posterMediaAssetId !== null ? posterById.get(media.posterMediaAssetId) : undefined;
-      const posterUrl =
+      const [mediaUrl, posterUrl] = await Promise.all([
+        media.kind === "image"
+          ? getMediaSignedUrl("batch-media", media.storagePath, transform)
+          : rendition === "detail"
+            ? getMediaSignedUrl("batch-media", media.storagePath)
+            : Promise.resolve(null),
         poster !== undefined
-          ? await getMediaSignedUrl("batch-media", poster.storagePath, { width: 480, height: 480 })
-          : null;
+          ? getMediaSignedUrl("batch-media", poster.storagePath, transform)
+          : Promise.resolve(null),
+      ]);
 
       return {
         ...memory,
@@ -85,8 +106,7 @@ export async function listGalleryPage(
   pageSize = 24,
 ): Promise<GalleryPage> {
   const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const callerId = userData.user?.id ?? null;
+  const callerId = (await getVerifiedUser())?.id ?? null;
 
   let query = supabase
     .from("memories")
@@ -143,13 +163,11 @@ export async function getMemoryById(memoryId: string): Promise<Memory | null> {
 export async function getMemoryDetail(
   memoryId: string,
 ): Promise<MemoryWithMedia | null> {
-  const memory = await getMemoryById(memoryId);
+  const [memory, user] = await Promise.all([getMemoryById(memoryId), getVerifiedUser()]);
   if (memory === null) {
     return null;
   }
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const [withMedia] = await attachMedia([memory], userData.user?.id ?? null);
+  const [withMedia] = await attachMedia([memory], user?.id ?? null, "detail");
   return withMedia ?? null;
 }
 
@@ -167,8 +185,7 @@ export interface TimelineGroup {
 
 export async function listTimeline(batchId: string): Promise<TimelineGroup[]> {
   const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const callerId = userData.user?.id ?? null;
+  const callerId = (await getVerifiedUser())?.id ?? null;
 
   const { data, error } = await supabase
     .from("memories")
@@ -186,7 +203,9 @@ export async function listTimeline(batchId: string): Promise<TimelineGroup[]> {
 
   const groups = new Map<number, MemoryWithMedia[]>();
   for (const memory of memories) {
-    const year = new Date(memory.occurredOn).getFullYear();
+    // `occurred_on` is a plain YYYY-MM-DD date; parsing it through `Date`
+    // reads it as UTC midnight and can shift Jan 1 into the previous year.
+    const year = Number(memory.occurredOn.slice(0, 4));
     const bucket = groups.get(year) ?? [];
     bucket.push(memory);
     groups.set(year, bucket);

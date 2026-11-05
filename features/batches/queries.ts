@@ -1,5 +1,8 @@
 import "server-only";
 
+import { cache } from "react";
+
+import { getVerifiedUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { BatchRole } from "@/lib/authz/roles";
 
@@ -45,18 +48,20 @@ function mapBatchRow(row: BatchRow): Batch {
  * Reads batch_members joined to batches. RLS admits exactly the rows an
  * active member is entitled to (security.md §5.4) — no application-side
  * filtering of a superset (architecture §11).
+ *
+ * Memoized per request: the app shell and /home both render it.
  */
-export async function listMyBatches(): Promise<MyBatch[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (userData.user === null) {
+export const listMyBatches = cache(async (): Promise<MyBatch[]> => {
+  const user = await getVerifiedUser();
+  if (user === null) {
     return [];
   }
 
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("batch_members")
     .select(`role, batch:batches(${BATCH_COLUMNS})`)
-    .eq("profile_id", userData.user.id)
+    .eq("profile_id", user.id)
     .eq("status", "active")
     .order("joined_at", { ascending: true });
 
@@ -69,14 +74,16 @@ export async function listMyBatches(): Promise<MyBatch[]> {
       (row): row is { role: BatchRole; batch: BatchRow } => row.batch !== null,
     )
     .map((row) => ({ role: row.role, batch: mapBatchRow(row.batch) }));
-}
+});
 
 /**
  * A single batch by id, or `null` if it does not exist OR the caller cannot
  * see it — deliberately indistinguishable (security.md §3, "indistinguishable
  * denial"; architecture §18.6).
+ *
+ * Memoized per request: `generateMetadata` and the page both ask for it.
  */
-export async function getBatchById(batchId: string): Promise<Batch | null> {
+export const getBatchById = cache(async (batchId: string): Promise<Batch | null> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("batches")
@@ -88,7 +95,7 @@ export async function getBatchById(batchId: string): Promise<Batch | null> {
     throw error;
   }
   return data === null ? null : mapBatchRow(data);
-}
+});
 
 /**
  * Batches the caller owns that are scheduled for deletion (PRD #6), for the

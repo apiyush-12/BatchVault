@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function HomeLoading() {
   return (
-    <div aria-busy="true" aria-label="Loading your batches" className="flex flex-col gap-10">
+    <div role="status" aria-busy="true" aria-label="Loading your batches" className="flex flex-col gap-10">
       <div className="flex flex-col gap-3">
         <Skeleton className="h-10 w-72 max-w-full" />
         <Skeleton className="h-5 w-96 max-w-full" />

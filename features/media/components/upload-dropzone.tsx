@@ -101,6 +101,9 @@ export function UploadDropzone({
           type="file"
           accept={accept}
           className="sr-only"
+          // The visible button above is the keyboard control; an invisible
+          // second tab stop would show no focus ring.
+          tabIndex={-1}
           aria-label={inputLabel}
           onChange={(event) => {
             const file = event.target.files?.[0];

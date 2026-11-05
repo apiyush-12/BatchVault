@@ -38,9 +38,13 @@ export default async function BatchHomePage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
-  const [batch, membership] = await Promise.all([
+  // Gallery and roster reads are RLS-scoped to active members, so they run
+  // alongside the guard queries instead of after them — one round trip.
+  const [batch, membership, { memories, nextCursor }, members] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),
+    listGalleryPage(batchId, null, PREVIEW_COUNT),
+    listBatchMembers(batchId),
   ]);
 
   // Deliberately the same generic state whether the batch does not exist or
@@ -48,11 +52,6 @@ export default async function BatchHomePage({
   if (batch === null || membership === null || membership.status !== "active") {
     return <NotAvailableState />;
   }
-
-  const [{ memories, nextCursor }, members] = await Promise.all([
-    listGalleryPage(batchId, null, PREVIEW_COUNT),
-    listBatchMembers(batchId),
-  ]);
 
   const activeMembers = members.filter((member) => member.status === "active");
   const pendingCount = members.filter((member) => member.status === "pending").length;

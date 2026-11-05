@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Flag } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,22 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
   const [reason, setReason] = useState<ReportReason>("other");
   const [details, setDetails] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+
+  // The trigger and the form replace each other, so focus has to be moved
+  // by hand or it falls back to <body> on both open and cancel.
+  useEffect(() => {
+    if (!open && returnFocus.current) {
+      returnFocus.current = false;
+      triggerRef.current?.focus();
+    }
+  }, [open]);
+
+  function close() {
+    returnFocus.current = true;
+    setOpen(false);
+  }
 
   if (status === "sent") {
     return (
@@ -41,6 +57,7 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
   if (!open) {
     return (
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-caption text-foreground-muted transition-colors hover:text-foreground"
@@ -71,6 +88,7 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
         <Label htmlFor={`report-reason-${targetId}`}>Reason</Label>
         <Select
           id={`report-reason-${targetId}`}
+          autoFocus
           value={reason}
           onChange={(event) => setReason(event.target.value as ReportReason)}
         >
@@ -94,11 +112,11 @@ export function ReportButton({ targetKind, targetId }: { targetKind: ReportTarge
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+        <Button type="button" variant="ghost" size="sm" onClick={close}>
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={status === "sending"}>
-          Submit report
+          {status === "sending" ? "Sending…" : "Submit report"}
         </Button>
       </div>
     </form>
