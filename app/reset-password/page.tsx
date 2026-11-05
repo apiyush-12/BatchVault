@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AuthShell } from "@/components/shell/auth-shell";
 import { Button } from "@/components/ui/button";
 import { UpdatePasswordForm } from "@/features/authentication/components/update-password-form";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getVerifiedUser } from "@/lib/auth/session";
 
 export const metadata = { title: "Set a new password — BatchVault" };
 
@@ -15,10 +15,9 @@ export const metadata = { title: "Set a new password — BatchVault" };
  * its own check instead (a stale/already-used link means no session at all).
  */
 export default async function ResetPasswordPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.auth.getUser();
+  const user = await getVerifiedUser();
 
-  if (data.user === null) {
+  if (user === null) {
     return (
       <AuthShell
         title="Link expired"

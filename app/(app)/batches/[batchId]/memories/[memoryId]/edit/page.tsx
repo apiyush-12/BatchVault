@@ -9,6 +9,7 @@ import { getMemoryById } from "@/features/memories/queries";
 import { canEditMemory } from "@/features/memories/permissions";
 import { getMyMembership } from "@/features/memberships/queries";
 import { getVerifiedUser } from "@/lib/auth/session";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Edit memory — BatchVault" };
 
@@ -24,6 +25,9 @@ export default async function EditMemoryPage({
   params: Promise<{ batchId: string; memoryId: string }>;
 }) {
   const { batchId, memoryId } = await params;
+  if (!isUuid(batchId) || !isUuid(memoryId)) {
+    return <NotAvailableState />;
+  }
 
   const [user, batch, membership, memory] = await Promise.all([
     getVerifiedUser(),

@@ -6,6 +6,7 @@ import { getMyMembership } from "@/features/memberships/queries";
 import { ModerationQueue } from "@/features/moderation/components/moderation-queue";
 import { canModerate } from "@/features/moderation/permissions";
 import { listOpenReports } from "@/features/moderation/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Moderation — BatchVault" };
 
@@ -16,6 +17,9 @@ export default async function ModerationPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   const [batch, membership] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),

@@ -18,6 +18,7 @@ import { ReactionPicker } from "@/features/reactions/components/reaction-picker"
 import { getReactionSummary } from "@/features/reactions/queries";
 import { getVerifiedUser } from "@/lib/auth/session";
 import { formatDateOnly } from "@/lib/format/date";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Memory — BatchVault" };
 
@@ -35,6 +36,9 @@ export default async function MemoryDetailPage({
   params: Promise<{ batchId: string; memoryId: string }>;
 }) {
   const { batchId, memoryId } = await params;
+  if (!isUuid(batchId) || !isUuid(memoryId)) {
+    return <NotAvailableState />;
+  }
 
   // One round trip for everything. Comments and reactions are RLS-scoped to
   // the same visibility as the memory, so starting them before the guard

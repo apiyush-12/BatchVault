@@ -1,6 +1,7 @@
 # lib/validation
 
-Shared validation boundary (architecture §16) — **empty in Phase 0.**
+Shared validation boundary (architecture §16). Currently holds `ids.ts`
+(`isUuid`, used by every `[batchId]`/`[memoryId]` route before it queries).
 
 Zod is the single validation library (rules.md §1.6). Shared primitives land
 here only when two domains genuinely need the same one; a schema used by one

@@ -6,6 +6,7 @@ import { InviteManager } from "@/features/invitations/components/invite-manager"
 import { canManageInvites } from "@/features/invitations/permissions";
 import { listBatchInvites } from "@/features/invitations/queries";
 import { getMyMembership } from "@/features/memberships/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Invite — BatchVault" };
 
@@ -21,6 +22,9 @@ export default async function BatchInvitePage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   const [batch, membership] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),

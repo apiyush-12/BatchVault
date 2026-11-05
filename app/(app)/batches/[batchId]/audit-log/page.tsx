@@ -10,6 +10,7 @@ import { getMyMembership } from "@/features/memberships/queries";
 import { canViewAuditLog } from "@/features/moderation/permissions";
 import { listAuditLog } from "@/features/moderation/queries";
 import { formatTimestamp } from "@/lib/format/date";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Audit log — BatchVault" };
 
@@ -26,6 +27,9 @@ export default async function AuditLogPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   const [batch, membership] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),

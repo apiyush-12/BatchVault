@@ -7,6 +7,7 @@ import { DeleteBatchForm } from "@/features/batches/components/delete-batch-form
 import { canDeleteBatch, canEditBatchSettings } from "@/features/batches/permissions";
 import { getBatchById } from "@/features/batches/queries";
 import { getMyMembership } from "@/features/memberships/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Batch settings — BatchVault" };
 
@@ -22,6 +23,9 @@ export default async function BatchSettingsPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   const [batch, membership] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),

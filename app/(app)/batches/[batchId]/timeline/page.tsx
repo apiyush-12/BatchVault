@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { listTimeline } from "@/features/memories/queries";
 import { getMyMembership } from "@/features/memberships/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Timeline — BatchVault" };
 
@@ -30,6 +31,9 @@ export default async function BatchTimelinePage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   // The timeline read is RLS-scoped to active members, so it runs alongside
   // the guard queries rather than after them.
   const [batch, membership, groups] = await Promise.all([

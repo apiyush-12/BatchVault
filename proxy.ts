@@ -5,7 +5,9 @@ import { clientEnv } from "@/lib/env/client";
 import type { Database } from "@/types/database";
 
 /**
- * Session-refresh middleware (architecture §4; rules.md §1.2).
+ * Session-refresh middleware (architecture §4; rules.md §1.2). Next.js 16
+ * names this file convention `proxy`; behavior is identical to the former
+ * `middleware.ts`.
  *
  * This is the ONLY thing this file does. It refreshes the Supabase session
  * cookie on every request so Server Components/Actions read a current
@@ -14,7 +16,7 @@ import type { Database } from "@/types/database";
  * protected route group's `layout.tsx` as a Server Component, not here
  * ("middleware... does nothing else; it is not a place for business logic").
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(

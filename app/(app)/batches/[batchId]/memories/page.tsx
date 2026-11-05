@@ -11,10 +11,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { listGalleryPage } from "@/features/memories/queries";
 import { getMyMembership } from "@/features/memberships/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Memories — BatchVault" };
-
-const CURSOR_PATTERN = /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 /**
  * `?cursor=<occurred_on>_<id>`. The parts are interpolated into a PostgREST
@@ -22,10 +21,9 @@ const CURSOR_PATTERN = /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4
  * the gallery starts from the newest page.
  */
 function parseCursor(value: string | undefined): { occurredOn: string; id: string } | null {
-  const match = value !== undefined ? CURSOR_PATTERN.exec(value) : null;
-  if (match === null) return null;
-  const [, occurredOn, id] = match;
-  return occurredOn !== undefined && id !== undefined ? { occurredOn, id } : null;
+  const [occurredOn, id, ...rest] = value?.split("_") ?? [];
+  if (occurredOn === undefined || id === undefined || rest.length > 0) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(occurredOn) && isUuid(id) ? { occurredOn, id } : null;
 }
 
 /**
@@ -42,6 +40,9 @@ export default async function BatchMemoriesPage({
   searchParams: Promise<{ cursor?: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   const { cursor: cursorParam } = await searchParams;
   const cursor = parseCursor(cursorParam);
 

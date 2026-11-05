@@ -26,8 +26,11 @@ import type { Database } from "@/types/database";
  *   2. Bounded cron/cleanup jobs acting across batches with no user present.
  *   3. Operational backup/export/recovery tooling run outside the request path.
  *
- * As of Phase 0 there are no call sites at all. Adding one is a reviewed
- * change, not a convenience.
+ * Current call sites: account deletion (`features/profiles/actions.ts`,
+ * item 1), the two cron routes under `app/api/cron/` (item 2), and the
+ * rejected-upload object cleanup in `features/media/actions.ts` (item 2's
+ * object-first cleanup, run inline). Adding one is a reviewed change, not a
+ * convenience.
  */
 export function createSupabaseServiceRoleClient() {
   return createClient<Database>(

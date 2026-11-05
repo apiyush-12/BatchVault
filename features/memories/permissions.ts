@@ -8,7 +8,7 @@
  *
  * There is no `canDeleteMemory` — PRD #7 resolved author self-delete as
  * NOT permitted in MVP. Removal of any memory, including the author's own,
- * is mod+ only, via the Phase 8A moderator-removal path (not yet built).
+ * is mod+ only, via the moderation queue's `remove_content` path (Phase 8A).
  */
 export function canEditMemory(memoryCreatedBy: string | null, callerId: string): boolean {
   return memoryCreatedBy !== null && memoryCreatedBy === callerId;

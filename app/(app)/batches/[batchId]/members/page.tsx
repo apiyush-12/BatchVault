@@ -13,6 +13,7 @@ import { MemberRowActions } from "@/features/memberships/components/member-row-a
 import { getMyMembership, listBatchMembers } from "@/features/memberships/queries";
 import { getVerifiedUser } from "@/lib/auth/session";
 import { formatTimestampDate } from "@/lib/format/date";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Members — BatchVault" };
 
@@ -28,6 +29,9 @@ export default async function BatchMembersPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   // The roster is RLS-scoped (a non-member sees nothing, a pending requester
   // only their own row), so it is fetched alongside the guard queries.
   const [batch, membership, user, members] = await Promise.all([

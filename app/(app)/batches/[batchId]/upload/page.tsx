@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { getBatchById } from "@/features/batches/queries";
 import { PhotoUploadForm } from "@/features/media/components/photo-upload-form";
 import { getMyMembership } from "@/features/memberships/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export const metadata = { title: "Add a memory — BatchVault" };
 
@@ -17,6 +18,9 @@ export default async function UploadPhotoPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   const [batch, membership] = await Promise.all([
     getBatchById(batchId),
     getMyMembership(batchId),

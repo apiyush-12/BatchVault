@@ -1,8 +1,8 @@
 /**
  * Structured server-side logging skeleton (architecture §14; security.md §21).
  *
- * Phase 0 provides the shape only — one JSON line per event, carrying
- * correlation identifiers and never content. There is no domain logic here.
+ * One JSON line per event, carrying correlation identifiers and never
+ * content. There is no domain logic here.
  *
  * Hard rule this module exists to make easy: log identifiers, not content.
  * Never media bytes, signed URLs, tokens, the service-role key, caption or

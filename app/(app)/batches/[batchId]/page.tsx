@@ -13,6 +13,7 @@ import { getBatchById } from "@/features/batches/queries";
 import { canManageInvites } from "@/features/invitations/permissions";
 import { listGalleryPage } from "@/features/memories/queries";
 import { getMyMembership, listBatchMembers } from "@/features/memberships/queries";
+import { isUuid } from "@/lib/validation/ids";
 
 export async function generateMetadata({
   params,
@@ -20,7 +21,7 @@ export async function generateMetadata({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
-  const batch = await getBatchById(batchId);
+  const batch = isUuid(batchId) ? await getBatchById(batchId) : null;
   return { title: batch !== null ? `${batch.name} — BatchVault` : "BatchVault" };
 }
 
@@ -38,6 +39,9 @@ export default async function BatchHomePage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = await params;
+  if (!isUuid(batchId)) {
+    return <NotAvailableState />;
+  }
   // Gallery and roster reads are RLS-scoped to active members, so they run
   // alongside the guard queries instead of after them — one round trip.
   const [batch, membership, { memories, nextCursor }, members] = await Promise.all([

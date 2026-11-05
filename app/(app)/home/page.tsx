@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Plus, Sparkles } from "lucide-react";
 
 import { FadeIn } from "@/components/motion/fade-in";
+import { LocalGreeting } from "@/components/shell/local-greeting";
 import { RoleBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,14 +14,6 @@ import { PendingInviteRedirect } from "@/features/invitations/components/pending
 import { getOwnProfile } from "@/features/profiles/queries";
 
 export const metadata = { title: "Home — BatchVault" };
-
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 5) return "Still up";
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
 
 /**
  * The batch switcher (phases.md Phase 2; PRD §16; design.md §15) — the
@@ -42,7 +35,15 @@ export default async function HomePage() {
       <PendingInviteRedirect />
 
       <PageHeader
-        title={firstName !== null ? `${greeting()}, ${firstName}.` : "You're in."}
+        title={
+          firstName !== null ? (
+            <>
+              <LocalGreeting />, {firstName}.
+            </>
+          ) : (
+            "You're in."
+          )
+        }
         description={
           myBatches.length === 0
             ? "Your batch's first memory is waiting. Start a space for your classmates, or open the invite link someone sent you."

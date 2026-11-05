@@ -34,5 +34,5 @@ app/
 ```
 
 Route protection is a Server Component check in each group's `layout.tsx`,
-never in `middleware.ts` — middleware refreshes the session cookie and does
+never in `proxy.ts` (formerly `middleware.ts`) — it refreshes the session cookie and does
 nothing else (rules.md §1.2; architecture §4).
