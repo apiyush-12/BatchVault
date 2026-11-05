@@ -6,11 +6,10 @@ import { Archive, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FormMessage } from "@/components/ui/form-message";
+import { LocalDate } from "@/components/ui/local-date";
 
 import { restoreBatchAction } from "../actions";
 import type { DeletedBatch } from "../types";
-
-const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
 
 /** The owner's batches scheduled for deletion, with restore (PRD #6). */
 export function DeletedBatchesList({ batches }: { batches: DeletedBatch[] }) {
@@ -50,9 +49,14 @@ export function DeletedBatchesList({ batches }: { batches: DeletedBatch[] }) {
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate text-body font-semibold text-foreground">{batch.name}</span>
               <span className="text-body-sm text-foreground-muted">
-                {batch.restorable
-                  ? `Permanently deleted after ${dateFormat.format(new Date(batch.restorableUntil))}`
-                  : "Can't be restored"}
+                {batch.restorable ? (
+                  <>
+                    Restore it until <LocalDate value={batch.restorableUntil} /> — after that it&rsquo;s
+                    permanently deleted.
+                  </>
+                ) : (
+                  "The restore window has passed, so this batch can't be restored."
+                )}
               </span>
             </span>
             {batch.restorable && (

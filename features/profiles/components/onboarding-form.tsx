@@ -57,6 +57,7 @@ export function OnboardingForm({
 
       <FormField
         label="Display name"
+        hint="This is the name classmates see next to your memories."
         error={errors.displayName?.message}
         render={({ inputId, describedBy }) => (
           <Input

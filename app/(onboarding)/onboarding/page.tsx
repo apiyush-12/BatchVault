@@ -10,7 +10,7 @@ export default async function OnboardingPage() {
   return (
     <AuthShell
       title="Complete your profile"
-      description="One quick step so your classmates recognise you. You can change all of this later."
+      description="Add your name so classmates recognise you. Next you can create a batch or join one with an invite link. You can change all of this later."
     >
       <OnboardingForm initialAvatarUrl={avatarUrl} />
     </AuthShell>

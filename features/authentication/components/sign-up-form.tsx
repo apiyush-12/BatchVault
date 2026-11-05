@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -45,7 +46,14 @@ export function SignUpForm() {
         <p className="font-medium text-foreground">Check your email</p>
         <p className="text-foreground-muted">
           We&rsquo;ve sent you a link to verify your account. Open it on this
-          device to continue.
+          device to continue. It can take a minute to arrive, so check your
+          spam folder too.
+        </p>
+        <p className="text-foreground-muted">
+          Already verified?{" "}
+          <Link href="/sign-in" className="font-medium text-primary underline-offset-4 hover:underline">
+            Sign in
+          </Link>
         </p>
       </div>
     );

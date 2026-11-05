@@ -75,7 +75,7 @@ export default async function BatchMembersPage({
       >
         <Avatar src={member.avatarUrl} name={member.displayName} size="md" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex flex-wrap items-center gap-2 text-body font-medium text-foreground">
+          <span className="flex flex-wrap items-center gap-2 text-body font-medium break-words text-foreground">
             {member.displayName ?? "Former member"}
             {isSelf && <Badge variant="outline">You</Badge>}
           </span>

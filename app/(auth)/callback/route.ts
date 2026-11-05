@@ -18,15 +18,19 @@ export async function GET(request: Request): Promise<Response> {
   const code = url.searchParams.get("code");
   const next = resolveAllowedRedirect(url.searchParams.get("next"));
 
+  // A fixed, non-sensitive flag the sign-in page turns into a visible
+  // explanation, rather than dropping the user there with no context.
+  const failed = new URL("/sign-in?link=invalid", url.origin);
+
   if (code === null) {
-    return NextResponse.redirect(new URL("/sign-in", url.origin));
+    return NextResponse.redirect(failed);
   }
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error !== null) {
-    return NextResponse.redirect(new URL("/sign-in", url.origin));
+    return NextResponse.redirect(failed);
   }
 
   return NextResponse.redirect(new URL(next, url.origin));

@@ -68,7 +68,7 @@ export function PhotoUploadForm({ batchId }: { batchId: string }) {
     }
     if (chosen.size > MAX_IMAGE_BYTES) {
       setStage("error");
-      setError("That image is larger than 15 MB.");
+      setError("That image is larger than 15 MB. Choose a smaller one, or export a lower-resolution copy.");
       return;
     }
     setStage("idle");
@@ -105,7 +105,7 @@ export function PhotoUploadForm({ batchId }: { batchId: string }) {
 
     if (uploadError !== null) {
       setStage("error");
-      setError("The upload didn't complete. Please try again.");
+      setError("The upload didn't complete. Check your connection and try again.");
       return;
     }
 

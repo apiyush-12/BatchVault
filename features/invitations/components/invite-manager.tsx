@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, Link2 } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { Check, Copy, Link2, Share2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LocalDate } from "@/components/ui/local-date";
 
 import { revokeInviteAction } from "../actions";
 import type { Invite } from "../types";
 import { InviteCreateForm } from "./invite-create-form";
 
-const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
+const noopSubscribe = () => () => {};
 
 function isUsable(invite: Invite, now: Date): boolean {
   if (invite.revokedAt !== null) return false;
@@ -23,6 +24,12 @@ function isUsable(invite: Invite, now: Date): boolean {
 function CopyLinkRow({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  // The native share sheet exists on most phones; the server pass assumes not.
+  const canShare = useSyncExternalStore(
+    noopSubscribe,
+    () => typeof navigator.share === "function",
+    () => false,
+  );
 
   async function copy() {
     try {
@@ -35,6 +42,14 @@ function CopyLinkRow({ url }: { url: string }) {
     setCopyFailed(false);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function share() {
+    try {
+      await navigator.share({ title: "Join our batch on BatchVault", url });
+    } catch {
+      // Dismissing the share sheet rejects; nothing to report.
+    }
   }
 
   return (
@@ -70,6 +85,12 @@ function CopyLinkRow({ url }: { url: string }) {
             </>
           )}
         </Button>
+        {canShare && (
+          <Button type="button" variant="secondary" onClick={share} className="shrink-0">
+            <Share2 aria-hidden="true" className="size-4" />
+            Share
+          </Button>
+        )}
       </div>
       {copyFailed && (
         <p role="alert" className="text-caption font-medium text-danger">
@@ -106,16 +127,21 @@ function InviteRow({ invite, batchId }: { invite: Invite; batchId: string }) {
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={usable ? "success" : "neutral"}>{status}</Badge>
           <span className="text-caption text-foreground-muted">
-            Created {dateFormat.format(new Date(invite.createdAt))}
+            Created <LocalDate value={invite.createdAt} />
           </span>
         </div>
         <span className="text-body-sm text-foreground-muted">
           Used {invite.useCount}
           {invite.maxUses !== null ? ` of ${invite.maxUses}` : ""} time
           {invite.useCount === 1 ? "" : "s"}
-          {invite.expiresAt !== null
-            ? ` · expires ${dateFormat.format(new Date(invite.expiresAt))}`
-            : " · no expiry"}
+          {invite.expiresAt !== null ? (
+            <>
+              {" · expires "}
+              <LocalDate value={invite.expiresAt} />
+            </>
+          ) : (
+            " · no expiry"
+          )}
         </span>
         {error !== null && (
           <span role="alert" className="text-caption font-medium text-danger">

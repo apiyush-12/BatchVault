@@ -34,6 +34,6 @@ export type ActionResult<T = undefined> =
  * (security.md §9, §17: "indistinguishable denial").
  */
 export const GENERIC_INVITE_ERROR =
-  "This invite link isn't valid. Ask whoever shared it for a new one.";
+  "This invite link isn't valid. It may have expired, been used up, or been turned off, or the link may be incomplete. Ask whoever shared it for a new one, and open it in full.";
 
 export const GENERIC_ERROR = "Something went wrong. Please try again.";

@@ -154,6 +154,10 @@ export function InviteLandingView() {
         {isJoining && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
         {isJoining ? "Joining…" : "Join"}
       </Button>
+      <p className="text-caption text-foreground-muted">
+        If you&rsquo;re not signed in, you&rsquo;ll be asked to sign in or create an account first, then
+        brought back here to finish joining.
+      </p>
     </div>
   );
 }

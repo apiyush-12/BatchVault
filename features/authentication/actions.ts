@@ -17,6 +17,11 @@ import {
   GENERIC_AUTH_ERROR,
   GENERIC_ERROR,
   GENERIC_SIGN_UP_ERROR,
+  LINK_EXPIRED_ERROR,
+  RATE_LIMITED_ERROR,
+  SAME_PASSWORD_ERROR,
+  WEAK_PASSWORD_ERROR,
+  isRateLimitCode,
   type ActionResult,
 } from "./types";
 
@@ -60,8 +65,14 @@ export async function signUpAction(
     logger.warn("authentication.sign_up_failed", {
       code: error.code ?? "unknown",
     });
-    // Sign-up-specific wording, still generic: never reveals whether the
-    // address already exists or what Auth actually rejected (security.md §3).
+    // Only request-volume and password-strength problems are named: neither
+    // depends on whether the address already exists (security.md §3).
+    if (isRateLimitCode(error.code)) {
+      return { ok: false, error: RATE_LIMITED_ERROR };
+    }
+    if (error.code === "weak_password") {
+      return { ok: false, error: WEAK_PASSWORD_ERROR };
+    }
     return { ok: false, error: GENERIC_SIGN_UP_ERROR };
   }
 
@@ -90,6 +101,9 @@ export async function signInAction(input: unknown): Promise<ActionResult> {
     logger.warn("authentication.sign_in_failed", {
       code: error?.code ?? "unknown",
     });
+    if (isRateLimitCode(error?.code)) {
+      return { ok: false, error: RATE_LIMITED_ERROR };
+    }
     // Same generic message for wrong password, unknown email, and an
     // unverified account — a stranger must not learn which (security.md §3).
     return { ok: false, error: GENERIC_AUTH_ERROR };
@@ -117,9 +131,20 @@ export async function requestPasswordResetAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: buildRedirectUrl("/reset-password"),
   });
+
+  if (error !== null) {
+    logger.warn("authentication.password_reset_request_failed", {
+      code: error.code ?? "unknown",
+    });
+    // A rate limit says nothing about the address, and without this the
+    // user would be told "we've sent a link" when nothing was sent.
+    if (isRateLimitCode(error.code)) {
+      return { ok: false, error: RATE_LIMITED_ERROR };
+    }
+  }
 
   // Identical success response whether or not the address is registered —
   // an enumeration probe must learn nothing (security.md §3).
@@ -142,7 +167,7 @@ export async function updatePasswordAction(
   if (userData.user === null) {
     // Only reachable via the recovery-session link; no session means it was
     // already used or has expired.
-    return { ok: false, error: GENERIC_ERROR };
+    return { ok: false, error: LINK_EXPIRED_ERROR };
   }
 
   const { error } = await supabase.auth.updateUser({
@@ -152,6 +177,15 @@ export async function updatePasswordAction(
     logger.warn("authentication.update_password_failed", {
       code: error.code ?? "unknown",
     });
+    if (error.code === "same_password") {
+      return { ok: false, error: SAME_PASSWORD_ERROR };
+    }
+    if (error.code === "weak_password") {
+      return { ok: false, error: WEAK_PASSWORD_ERROR };
+    }
+    if (isRateLimitCode(error.code)) {
+      return { ok: false, error: RATE_LIMITED_ERROR };
+    }
     return { ok: false, error: GENERIC_ERROR };
   }
 

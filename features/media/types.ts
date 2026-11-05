@@ -18,7 +18,8 @@ export type ActionResult<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
 
-export const GENERIC_ERROR = "Something went wrong. Please try again.";
+export const GENERIC_ERROR =
+  "We couldn't save that. Please try again, or choose a different file if it keeps failing.";
 
 /** Phase 4A: image only (security.md §15). No SVG, no HEIC. */
 export const ALLOWED_IMAGE_TYPES = [

@@ -124,12 +124,12 @@ export function VideoUploadForm({ batchId }: { batchId: string }) {
   function acceptFile(chosen: File) {
     if (!ALLOWED_VIDEO_TYPES.includes(chosen.type as (typeof ALLOWED_VIDEO_TYPES)[number])) {
       setStage("error");
-      setError("Please choose an MP4 video.");
+      setError("Only MP4 videos are supported. If your phone saved this as .mov, convert or export it as MP4 first.");
       return;
     }
     if (chosen.size > MAX_VIDEO_BYTES) {
       setStage("error");
-      setError("That video is larger than 100 MB.");
+      setError("That video is larger than 100 MB. Trim it or export a smaller version and try again.");
       return;
     }
     setStage("idle");
@@ -170,7 +170,7 @@ export function VideoUploadForm({ batchId }: { batchId: string }) {
 
     if (uploadError !== null) {
       setStage("error");
-      setError("The upload didn't complete. Please try again.");
+      setError("The upload didn't complete. Check your connection and try again — large videos can take a while on mobile data.");
       return;
     }
 

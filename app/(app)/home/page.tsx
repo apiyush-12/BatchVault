@@ -46,7 +46,7 @@ export default async function HomePage() {
         }
         description={
           myBatches.length === 0
-            ? "Your batch's first memory is waiting. Start a space for your classmates, or open the invite link someone sent you."
+            ? "Create a batch for your classmates, or join one by opening the invite link someone sent you."
             : "Your batches, exactly where you left them."
         }
         actions={
@@ -65,14 +65,26 @@ export default async function HomePage() {
         <EmptyState
           icon={Sparkles}
           title="You're not part of a batch yet"
-          description="Create one to start building your batch's shared archive. It's private by default — only classmates you invite can see it."
+          description="Start your batch's shared archive, or join one a classmate already started. Every batch is private — only people with an invite can see it."
           action={
-            <Button asChild size="lg">
-              <Link href="/batches/new">
-                <Plus aria-hidden="true" className="size-4" />
-                Create your batch
-              </Link>
-            </Button>
+            <div className="flex flex-col items-center gap-5">
+              <div className="flex flex-col items-center gap-2">
+                <Button asChild size="lg">
+                  <Link href="/batches/new">
+                    <Plus aria-hidden="true" className="size-4" />
+                    Create your batch
+                  </Link>
+                </Button>
+                <p className="text-caption text-foreground-muted">Starting a new batch? You&rsquo;ll be its owner.</p>
+              </div>
+              <div className="flex max-w-sm flex-col gap-1 border-t border-border pt-4">
+                <p className="text-body-sm font-semibold text-foreground">Joining an existing batch?</p>
+                <p className="text-body-sm text-foreground-muted">
+                  Open the invite link a classmate sent you (in your messages or email). It brings you
+                  straight in — there&rsquo;s nothing to paste here.
+                </p>
+              </div>
+            </div>
           }
         />
       ) : (
